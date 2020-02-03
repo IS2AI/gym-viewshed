@@ -1,11 +1,9 @@
-#!/usr/bin/env python
+from setuptools import setup
 
-from distutils.core import setup
-
-setup(name='gym-viewshed',
+setup(name='gym_viewshed',
       version='1.0',
       description='gym-viewshed custom gym environment for ArcGIS',
       author='Daulet Baimukashev',
-      author_email='dbaimukashev@gmail.com',
+      author_email='dbaimukashev@gmail.com'
       #packages=[""]
       )
