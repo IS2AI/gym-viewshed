@@ -1,6 +1,12 @@
+"""
+Created on Mon Feb  3 13:41:56 2020
+
+@author: Daulet Baimukashev
+"""
+
 import numpy as np
 from PIL import Image
-import csv
+import cv2
 
 import arcpy
 from arcpy import env
@@ -10,8 +16,15 @@ from arcpy.sa import Viewshed2
 import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
+import matplotlib.pyplot as plt
 
 #import torch
+
+env.overwriteOutput = True
+env.workspace = r"D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/input_raster"
+env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
+env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
+
 
 class ViewshedEnv(gym.Env):
     """
@@ -29,8 +42,10 @@ class ViewshedEnv(gym.Env):
         Num Action
         0   Rotate +5 deg 
         1   Rotate -5 deg
-        2   Move +5 pixel
-        3   Move -5 pixel
+        2   Move +5 pixel x
+        3   Move -5 pixel x
+        4   Move +5 pixel y 
+        5   Move -5 pixel y 
     
     Reward: 
         Reward 1 for game over
@@ -45,113 +60,279 @@ class ViewshedEnv(gym.Env):
     metadata = {'render.modes': ['human']}
   
     def __init__(self):
-    
-      # self.const = const
-      self.city_image = Image.open("../data/sample_city.png").resize((500,500))
-      self.im_width, self.im_height  = self.city_image.size
-      self.city_array = np.array(self.city_image)
-      self.input_rasterC = arcpy.NumPyArrayToRaster(self.city_array)
+
+        # inputs Raster and ShapeFile        
+        self.city_array = 255 - np.array((Image.open("D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))     
+        self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
+        self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
+        print('city size', self.city_array.shape)
+        self.shape_file = r"../data/input_shapefile/1/points_XYTableToPoint_second.shp" 
+        # viewshed params
+        self.info = 0
+        self.init_x = self.im_width/2
+        self.init_y = self.im_height/2
+        self.init_azimuth1 = 0
+        self.init_azimuth2 = 180
+        self.analysis_type = "FREQUENCY"
+        self.analysis_method = "ALL_SIGHTLINES"
+        self.radius_is_3d = 'False'
+        self.observer_height_ = 40         
+        self.vertical_lower_angle  = - 90
+        self.vertical_upper_angle = 90
+        self.inner_radius = 0
+        self.outer_radius = 70
+        
+        # camera params
+        self.camera_number = 1
+        self.action_number = 6
+        self.delta_theta = 9
+        self.delta_x = 9
+        self.delta_y= 9
+        self.delta_fv = 180 # Field of View
+        self.max_render = 20
+        
+        # gym env params
+        self.observation_space = spaces.Box(low=0, high=255, shape=(self.im_width,self.im_height, 1), dtype = np.uint8)
+        self.action_space = spaces.Discrete(6)
+        self.state = np.zeros((self.im_height, self.im_width)) # self.city_Array
       
-      self.observation_space = spaces.Box(low=0, high=255, shape=(self.im_width,self.im_height, 1), dtype = np.uint8)
-      self.action_space = spaces.Discrete(4)
-      self.state = self.city_array # or init image
-      
-      self.points = [10,10,10]
-      self.angle_start = 0
-      self.angle_end = self.angle_start + 90
-      
-      self.seed(0)
-      
+        self.iteration = 0
+        self.seed(0)
+        
     def step(self, action):
-        assert self.action_space.contains(action)
-        state = self.state
+        #assert self.action_space.contains(action)
         
-        self.act(self, action)
+        state, reward, done = self.act_discrete(self.input_raster, self.shape_file, action)
         
-        done = 0
-        done = bool(done)
+        self.iteration = self.iteration + 1
+        self.info = reward
         
-        if not done:
-            reward = 1.0
-        else:
-            reward = 0.0
-        
-        return np.array(state), reward, done, {}
+        return state, reward, done
     
     def seed(self, seed = None):
-        self.np_random , seed = seeding.np_random()
+        self.np_random , seed = seeding.np_random() 
         return [seed]
       
     def reset(self):
-        self.state = self.city_array
+        self.reset_shapefile(self.shape_file)
+        self.state = np.zeros((self.im_height, self.im_width)) # self.state
+        
+        return self.state
         
     def render(self, mode='human'):
-        pass
+        print('reward::: ', self.info)
+        # how to show th array
+        show_array = self.state * 100
+        
+        is_render = 'True'
+        if is_render == 'True' and self.iteration < self.max_render :
+            #img = cv2.imread("image.jpg")
+            cv2.startWindowThread()
+            cv2.namedWindow("preview")
+            cv2.imshow("preview", show_array)
+            cv2.waitKey(300)
+            cv2.destroyAllWindows()
     
     def close(self):
         pass
     
-    def act(self, action):
-        self.create_points(action)
-        output_viewshed = self.create_viewshed(self)    
-        next_state = output_viewshed # ? 
+    def reset_shapefile(self, shape_file):
         
-        return next_state
-    
-    def create_points(self, action):
-        # choose action and change the points location
-        if action == 0:
-            # rotate +5 deg
+        print('Reset init camera locations')
+        fieldlist=['AZIMUTH1','AZIMUTH2']
+        tokens=['SHAPE@X','SHAPE@Y']
+        with arcpy.da.UpdateCursor(shape_file,tokens+fieldlist) as cursor:
+            for row in cursor:
+                row[0]= self.init_x
+                row[1]= self.init_y
+                row[2]= self.init_azimuth1
+                row[3]= self.init_azimuth2
+                cursor.updateRow(row)        
+        del cursor
+        
+    def act_discrete(self, input_raster, shape_file, action):
+        
+        # this function needs to do:
+        # map the "action" to CELL value update in shapefile (actions x observers)
+        # action [0 ... N] --- > action type x observerN
+        # here assumption is that action will be 1xD array for all N cameras, and should be interpreted as which action to which observer
+        
+        # for 1 camera 
+        action_type = action #%cameraN
+        observer_n = self.camera_number #action//actionN + 1
+        
+        print('action', action) # [0 ... 5]
+        #print('action_type',action_type) # [0 ... 5]
+        #print('observerN',observerN ) # [1 ... ]
+        
+        self.update_shapefile_discrete(shape_file, action_type, observer_n)
+        # create the viewshed
+        output_array, visible_area = self.create_viewshed(input_raster, shape_file)
+
+        # for rendering
+        self.state = output_array        
+
+        # interpret the viewshed output to some value - state , reward etc
+        
+        # next_state ?
+        next_state = output_array
+        
+        #reward ?
+        reward = visible_area/output_array.size
+        
+        #done ?
+        if self.iteration > 100:
+            done = 1
+        else:
+            done = 0
+        
+        return next_state, reward, done
+
+    def update_shapefile_discrete(self, shape_file, action_type, observer_n):
+        
+        delta_theta = self.delta_theta
+        delta_x = self.delta_x
+        delta_y = self.delta_y
+        angle_fv = self.delta_fv # Field of View
+
+        # matrix_action_observer [1,5] ---> for camera N, update 1 action
+        if action_type == 0:
+            # rotate + delta deg
             # change the shape file
-            self.angle_start = self.angle_start + 5
-            self.angle_end = self.angle_start + 90
-            pass
-        elif action == 1:
-            # rotate -5 deg
-            self.angle_start = self.angle_start - 5
-            self.angle_end = self.angle_start + 90
-            pass
-        elif action == 2:
-            # move up x
-            self.points=self.points+[5,0,0]
-            pass
-        elif action == 3:
-            # move down x
-            self.points=self.points-[5,0,0]
-            pass
-        elif action == 4:
-            # move up y
-            self.points=self.points+[0,5,0]
-            pass
-        elif action == 5:
-            # move down y
-            self.points=self.points-[0,5,0]
-            pass
-        
-        fn = 'xyz'
-        with open("../data/points.csv", "w", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows([str(fn)])
-            writer.writerows(self.points)
-    
-    def create_viewshed(self):
-        
-        input_rasterC = self.input_rasterC
+            tokens=["AZIMUTH1", "AZIMUTH2"]
+            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
+                s = 0
+                for row in cursor :
+                    s = s + 1
+                    if s == observer_n:
+                        temp1_old = row[0]
+                        temp1 =  temp1_old + delta_theta
+                        if temp1 > 360:
+                            temp1 = temp1 - 360
+                        temp2 = temp1 + angle_fv             
+                        print('set A+')
+                        row[0] =  temp1
+                        row[1] =  temp2
+                        cursor.updateRow(row)
+                    
+            del cursor        
+        if action_type == 1:
+            # rotate - delta deg
+            # change the shape file
+            tokens=["AZIMUTH1", "AZIMUTH2"]
+            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
+                s = 0
+                for row in cursor :
+                    s = s + 1
+                    if s == observer_n:
+                        temp1_old = row[0]
+                        temp1 =  temp1_old - delta_theta
+                        if temp1 < 0:
+                            temp1 = temp1 + 360
+                        temp2 = temp1 + angle_fv
+                        print('set A-')
+                        row[0] =  temp1
+                        row[1] =  temp2
+                        cursor.updateRow(row)
+            del cursor 
+        if action_type == 2:
+            # move in x -> + delta right
+            # change the shape file
+            tokens=['SHAPE@X']
+            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
+                s = 0
+                for row in cursor:
+                    s = s + 1
+                    if s == observer_n:
+                        print('set x+')
+                        row[0]= row[0] + delta_x
+                        if row[0] >= self.im_width:
+                            row[0] = self.im_width - 1 
+                            print('wall right')
+                        cursor.updateRow(row)
+            del cursor
+        if action_type == 3:
+            # move in x <- - delta left
+            # change the shape file
+            tokens=['SHAPE@X']
+            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
+                s = 0
+                for row in cursor:
+                    s = s + 1
+                    if s == observer_n:
+                        print('set x-')
+                        row[0]= row[0] - delta_x
+                        if row[0] <= 0:
+                            row[0] = 1 
+                            print('wall left')
+                        cursor.updateRow(row)
+            del cursor            
+        if action_type == 4:
+            # move in y + delta up
+            # change the shape file
+            tokens=['SHAPE@Y']
+            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
+                s = 0
+                for row in cursor:
+                    s = s + 1
+                    if s == observer_n:
+                        print('set y+',row[0])
+                        row[0]= row[0] + delta_y
+                        #print('after plus', row[1])
+                        if row[0] >= self.im_height:
+                            row[0] = self.im_height - 1 
+                            print('wall up')
+                        cursor.updateRow(row)
+            del cursor
+        if action_type == 5:
+            # move in y - delta up
+            # change the shape file
+            tokens=['SHAPE@Y']
+            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
+                s = 0
+                for row in cursor:
+                    s = s + 1
+                    if s == observer_n:
+                        print('set y-', row[0])
+                        row[0]= row[0] - delta_y
+                        if row[0] <= 0:
+                            row[0] = 1 
+                            print('wall down')
+                        cursor.updateRow(row)
+            del cursor
+
+    def create_viewshed(self, input_raster, shape_file):
         # define the workspace
-        env.workspace = "../data/raster/"
-        env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
-        env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
-        env.overwriteOutput = True
+        #env.overwriteOutput = True
+        #env.workspace = r"D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/input_raster"
+        #env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
+        #env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
+        
+        analysis_type_ = self.analysis_type 
+        analysis_method_ = self.analysis_method 
+        radius_is_3d_ = self.radius_is_3d
+        observer_height_ = self.observer_height_
+        vertical_lower_angle_ = self.vertical_lower_angle 
+        vertical_upper_angle_ = self.vertical_upper_angle 
+        inner_radius_ = self.inner_radius 
+        outer_radius_ = self.outer_radius
+        
+        # import raster
+        #input_rasterC 
+        #import observer
+        #shape_file 
+        
+        outViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
+                                 vertical_error= 0, out_observer_region_relationship_table= "", refractivity_coefficient= 0.13,
+                                 surface_offset= 0, observer_offset = 0, observer_elevation = observer_height_, inner_radius= inner_radius_,
+                                 outer_radius= outer_radius_, inner_radius_is_3d = radius_is_3d_, outer_radius_is_3d = radius_is_3d_,
+                                 horizontal_start_angle= "AZIMUTH1", horizontal_end_angle= "AZIMUTH2", vertical_upper_angle = vertical_upper_angle_, 
+                                 vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
     
-        #create observer
-        inCSV =   r'../data/points.csv'
-        shapeSaveName = "camera_points"
-        shape_file = arcpy.MakeXYEventLayer_management(table=inCSV, in_x_field="x", in_y_field="y", 
-                                          out_layer=shapeSaveName, spatial_reference=arcpy.SpatialReference("WGS 1984 UTM Zone 18N"), 
-                                          in_z_field="z")
+        output_array = arcpy.RasterToNumPyArray(outViewshed2) # output array -> each cell how many observer can see that pixel
+        output_array[output_array == 255] = 0
+                
+        visible_points = output_array > 0
+        visible_area = visible_points.sum()
         
-        outViewshed2 = Viewshed2(input_rasterC, shape_file, "", "FREQUENCY", "", observer_elevation = 50, analysis_method="ALL_SIGHTLINES", 
-                                 horizontal_start_angle= self.angle_start, horizontal_end_angle=self.angle_end, 
-                                 vertical_lower_angle=-90, vertical_upper_angle=30, inner_radius=1, outer_radius=100)
-        
-        return outViewshed2
+        return output_array, visible_area
