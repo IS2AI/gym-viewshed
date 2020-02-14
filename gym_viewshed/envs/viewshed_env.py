@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 #import torch
 
 env.overwriteOutput = True
-env.workspace = r"D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/input_raster"
+env.workspace = r"C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/input_raster"
 env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
 env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
 
@@ -62,10 +62,11 @@ class ViewshedEnv(gym.Env):
     def __init__(self):
 
         # inputs Raster and ShapeFile        
-        self.city_array = 255 - np.array((Image.open("D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))     
+        #self.city_array = 255 - np.array((Image.open("D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))     
+        self.city_array = 255 - np.array((Image.open("C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))             
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
-        print('city size', self.city_array.shape)
+        #print('city size', self.city_array.shape)
         self.shape_file = r"../data/input_shapefile/1/points_XYTableToPoint_second.shp" 
         # viewshed params
         self.info = 0
@@ -89,7 +90,7 @@ class ViewshedEnv(gym.Env):
         self.delta_x = 9
         self.delta_y= 9
         self.delta_fv = 180 # Field of View
-        self.max_render = 20
+        self.max_render = 50
         
         # gym env params
         self.observation_space = spaces.Box(low=0, high=255, shape=(self.im_width,self.im_height, 1), dtype = np.uint8)
@@ -120,7 +121,7 @@ class ViewshedEnv(gym.Env):
         return self.state
         
     def render(self, mode='human'):
-        print('reward::: ', self.info)
+        #print('reward::: ', self.info)
         # how to show th array
         show_array = self.state * 100
         
@@ -138,7 +139,7 @@ class ViewshedEnv(gym.Env):
     
     def reset_shapefile(self, shape_file):
         
-        print('Reset init camera locations')
+        #print('Reset init camera locations')
         fieldlist=['AZIMUTH1','AZIMUTH2']
         tokens=['SHAPE@X','SHAPE@Y']
         with arcpy.da.UpdateCursor(shape_file,tokens+fieldlist) as cursor:
@@ -161,7 +162,7 @@ class ViewshedEnv(gym.Env):
         action_type = action #%cameraN
         observer_n = self.camera_number #action//actionN + 1
         
-        print('action', action) # [0 ... 5]
+        #print('action', action) # [0 ... 5]
         #print('action_type',action_type) # [0 ... 5]
         #print('observerN',observerN ) # [1 ... ]
         
@@ -177,14 +178,21 @@ class ViewshedEnv(gym.Env):
         # next_state ?
         next_state = output_array
         
+        ratio = visible_area/output_array.size
+        
         #reward ?
-        reward = visible_area/output_array.size
+        #reward = visible_area/output_array.size
         
         #done ?
-        if self.iteration > 100:
+        if self.iteration > 10000:
             done = 1
         else:
-            done = 0
+            if ratio > 0.05:
+                reward = 10
+                done = 1
+            else:
+                reward = 0
+                done = 0
         
         return next_state, reward, done
 
@@ -210,7 +218,7 @@ class ViewshedEnv(gym.Env):
                         if temp1 > 360:
                             temp1 = temp1 - 360
                         temp2 = temp1 + angle_fv             
-                        print('set A+')
+                        #print('set A+')
                         row[0] =  temp1
                         row[1] =  temp2
                         cursor.updateRow(row)
@@ -230,7 +238,7 @@ class ViewshedEnv(gym.Env):
                         if temp1 < 0:
                             temp1 = temp1 + 360
                         temp2 = temp1 + angle_fv
-                        print('set A-')
+                        #print('set A-')
                         row[0] =  temp1
                         row[1] =  temp2
                         cursor.updateRow(row)
@@ -244,11 +252,11 @@ class ViewshedEnv(gym.Env):
                 for row in cursor:
                     s = s + 1
                     if s == observer_n:
-                        print('set x+')
+                        #print('set x+')
                         row[0]= row[0] + delta_x
                         if row[0] >= self.im_width:
                             row[0] = self.im_width - 1 
-                            print('wall right')
+                            #print('wall right')
                         cursor.updateRow(row)
             del cursor
         if action_type == 3:
@@ -260,11 +268,11 @@ class ViewshedEnv(gym.Env):
                 for row in cursor:
                     s = s + 1
                     if s == observer_n:
-                        print('set x-')
+                        #print('set x-')
                         row[0]= row[0] - delta_x
                         if row[0] <= 0:
                             row[0] = 1 
-                            print('wall left')
+                            #print('wall left')
                         cursor.updateRow(row)
             del cursor            
         if action_type == 4:
@@ -276,12 +284,12 @@ class ViewshedEnv(gym.Env):
                 for row in cursor:
                     s = s + 1
                     if s == observer_n:
-                        print('set y+',row[0])
+                        #print('set y+',row[0])
                         row[0]= row[0] + delta_y
                         #print('after plus', row[1])
                         if row[0] >= self.im_height:
                             row[0] = self.im_height - 1 
-                            print('wall up')
+                            #print('wall up')
                         cursor.updateRow(row)
             del cursor
         if action_type == 5:
@@ -293,11 +301,11 @@ class ViewshedEnv(gym.Env):
                 for row in cursor:
                     s = s + 1
                     if s == observer_n:
-                        print('set y-', row[0])
+                        #print('set y-', row[0])
                         row[0]= row[0] - delta_y
                         if row[0] <= 0:
                             row[0] = 1 
-                            print('wall down')
+                            #print('wall down')
                         cursor.updateRow(row)
             del cursor
 
