@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 #import torch
 
 env.overwriteOutput = True
-env.workspace = r"C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/input_raster"
+env.workspace = r"../data/input_raster"
 env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
 env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
 
@@ -63,7 +63,7 @@ class ViewshedEnv(gym.Env):
 
         # inputs Raster and ShapeFile        
         #self.city_array = 255 - np.array((Image.open("D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))     
-        self.city_array = 255 - np.array((Image.open("C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))             
+        self.city_array = 255 - np.array((Image.open(r"../data/sample_city_1.png").convert('L')), dtype=np.uint16)  #.resize((900,600))             
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         #print('city size', self.city_array.shape)
@@ -79,7 +79,7 @@ class ViewshedEnv(gym.Env):
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "ALL_SIGHTLINES"
         self.radius_is_3d = 'False'
-        self.observer_height_ = 100         
+        self.observer_height_ = 50         
         self.vertical_lower_angle  = -70
         self.vertical_upper_angle = 45
         self.inner_radius =  30
@@ -103,6 +103,12 @@ class ViewshedEnv(gym.Env):
         self.iteration = 0
         self.seed(0)
         
+        # reward
+        self.ratio_threshhold = 0.02
+        self.reward_good_step = 10.0
+        self.reward_bad_step = -0.1
+        self.max_iter = 10000
+        
     def step(self, action):
         #assert self.action_space.contains(action)
         
@@ -124,8 +130,7 @@ class ViewshedEnv(gym.Env):
         return self.state
         
     def render(self, mode='human'):
-        #print('reward::: ', self.info)
-        # how to show th array
+        # to show
         show_array = self.state * 100
         
         self.is_render = 'True'
@@ -134,7 +139,7 @@ class ViewshedEnv(gym.Env):
             cv2.startWindowThread()
             cv2.namedWindow("preview")
             cv2.imshow("preview", show_array)
-            cv2.waitKey(1000)
+            cv2.waitKey(300)
             cv2.destroyAllWindows()
     
     def close(self):
@@ -173,7 +178,6 @@ class ViewshedEnv(gym.Env):
         # create the viewshed
         output_array, visible_area = self.create_viewshed(input_raster, shape_file)
 
-
         # interpret the viewshed output to some value - state , reward etc
         
         # next_state ?
@@ -189,17 +193,16 @@ class ViewshedEnv(gym.Env):
         
         #done ?
         
-        if ratio > 0.02:
-            reward = 10
+        if ratio > self.ratio_threshhold:
+            reward = self.reward_good_step
         else:
-            reward = 0.001
+            reward = self.reward_bad_step
                 
-        if self.iteration > 500 or reward > 5:
+        if self.iteration > self.max_iter or reward == self.reward_good_step:
             done = 1
         else:
             done = 0
-            
-        
+                    
         return next_state, reward, done
 
     def update_shapefile_discrete(self, shape_file, action_type, observer_n):
@@ -349,7 +352,7 @@ class ViewshedEnv(gym.Env):
     
         output_array = arcpy.RasterToNumPyArray(outViewshed2) # output array -> each cell how many observer can see that pixel
         output_array[output_array == 255] = 0
-                
+        
         visible_points = output_array > 0
         visible_area = visible_points.sum()
         
