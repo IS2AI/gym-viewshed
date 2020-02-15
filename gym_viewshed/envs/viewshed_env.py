@@ -70,33 +70,36 @@ class ViewshedEnv(gym.Env):
         self.shape_file = r"../data/input_shapefile/1/points_XYTableToPoint_second.shp" 
         # viewshed params
         self.info = 0
-        self.init_x = self.im_width/2
-        self.init_y = self.im_height/2
+        self.info_x = 0.0
+        self.info_y = 0.0
+        self.init_x = 200 #self.im_width/2 #310
+        self.init_y = 200 #self.im_height/2 #80
         self.init_azimuth1 = 0
-        self.init_azimuth2 = 180
+        self.init_azimuth2 = 360
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "ALL_SIGHTLINES"
         self.radius_is_3d = 'False'
-        self.observer_height_ = 40         
-        self.vertical_lower_angle  = - 90
-        self.vertical_upper_angle = 90
-        self.inner_radius = 0
+        self.observer_height_ = 100         
+        self.vertical_lower_angle  = -70
+        self.vertical_upper_angle = 45
+        self.inner_radius =  30
         self.outer_radius = 70
         
         # camera params
         self.camera_number = 1
         self.action_number = 6
-        self.delta_theta = 9
-        self.delta_x = 9
-        self.delta_y= 9
-        self.delta_fv = 180 # Field of View
-        self.max_render = 50
+        self.delta_theta = 8
+        self.delta_x = 15
+        self.delta_y = 15
+        self.delta_fv = 80 # Field of View
+        self.max_render = 20
         
         # gym env params
         self.observation_space = spaces.Box(low=0, high=255, shape=(self.im_width,self.im_height, 1), dtype = np.uint8)
         self.action_space = spaces.Discrete(6)
         self.state = np.zeros((self.im_height, self.im_width)) # self.city_Array
       
+        self.is_render = 'True'
         self.iteration = 0
         self.seed(0)
         
@@ -106,7 +109,6 @@ class ViewshedEnv(gym.Env):
         state, reward, done = self.act_discrete(self.input_raster, self.shape_file, action)
         
         self.iteration = self.iteration + 1
-        self.info = reward
         
         return state, reward, done
     
@@ -117,6 +119,7 @@ class ViewshedEnv(gym.Env):
     def reset(self):
         self.reset_shapefile(self.shape_file)
         self.state = np.zeros((self.im_height, self.im_width)) # self.state
+        self.iteration = 0
         
         return self.state
         
@@ -125,13 +128,13 @@ class ViewshedEnv(gym.Env):
         # how to show th array
         show_array = self.state * 100
         
-        is_render = 'True'
-        if is_render == 'True' and self.iteration < self.max_render :
-            #img = cv2.imread("image.jpg")
+        self.is_render = 'True'
+        if self.is_render == 'True' and self.iteration < self.max_render :
+            print('render --- ratio --- ', self.info)
             cv2.startWindowThread()
             cv2.namedWindow("preview")
             cv2.imshow("preview", show_array)
-            cv2.waitKey(300)
+            cv2.waitKey(1000)
             cv2.destroyAllWindows()
     
     def close(self):
@@ -170,29 +173,32 @@ class ViewshedEnv(gym.Env):
         # create the viewshed
         output_array, visible_area = self.create_viewshed(input_raster, shape_file)
 
-        # for rendering
-        self.state = output_array        
 
         # interpret the viewshed output to some value - state , reward etc
         
         # next_state ?
         next_state = output_array
-        
         ratio = visible_area/output_array.size
+
+        # for rendering        
+        self.state = output_array        
+        self.info = ratio
         
         #reward ?
         #reward = visible_area/output_array.size
         
         #done ?
-        if self.iteration > 10000:
+        
+        if ratio > 0.02:
+            reward = 10
+        else:
+            reward = 0.001
+                
+        if self.iteration > 500 or reward > 5:
             done = 1
         else:
-            if ratio > 0.05:
-                reward = 10
-                done = 1
-            else:
-                reward = 0
-                done = 0
+            done = 0
+            
         
         return next_state, reward, done
 
@@ -257,6 +263,7 @@ class ViewshedEnv(gym.Env):
                         if row[0] >= self.im_width:
                             row[0] = self.im_width - 1 
                             #print('wall right')
+                        self.info_x = row[0]
                         cursor.updateRow(row)
             del cursor
         if action_type == 3:
@@ -273,6 +280,7 @@ class ViewshedEnv(gym.Env):
                         if row[0] <= 0:
                             row[0] = 1 
                             #print('wall left')
+                        self.info_x = row[0]
                         cursor.updateRow(row)
             del cursor            
         if action_type == 4:
@@ -290,6 +298,7 @@ class ViewshedEnv(gym.Env):
                         if row[0] >= self.im_height:
                             row[0] = self.im_height - 1 
                             #print('wall up')
+                        self.info_y = row[0]
                         cursor.updateRow(row)
             del cursor
         if action_type == 5:
@@ -306,6 +315,7 @@ class ViewshedEnv(gym.Env):
                         if row[0] <= 0:
                             row[0] = 1 
                             #print('wall down')
+                        self.info_y = row[0]
                         cursor.updateRow(row)
             del cursor
 
