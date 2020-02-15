@@ -106,7 +106,7 @@ class ViewshedEnv(gym.Env):
         # reward
         self.ratio_threshhold = 0.02
         self.reward_good_step = 10.0
-        self.reward_bad_step = -0.1
+        self.reward_bad_step = -0.8
         self.max_iter = 10000
         
     def step(self, action):
