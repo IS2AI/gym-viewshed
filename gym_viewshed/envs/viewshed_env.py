@@ -105,9 +105,9 @@ class ViewshedEnv(gym.Env):
         
         # reward
         self.ratio_threshhold = 0.02
-        self.reward_good_step = 10.0
-        self.reward_bad_step = -0.8
-        self.max_iter = 10000
+        self.reward_good_step = 1
+        self.reward_bad_step = -0.1
+        self.max_iter = 5000
         
     def step(self, action):
         #assert self.action_space.contains(action)
@@ -133,7 +133,7 @@ class ViewshedEnv(gym.Env):
         # to show
         show_array = self.state * 100
         
-        self.is_render = 'True'
+        self.is_render = 'False'
         if self.is_render == 'True' and self.iteration < self.max_render :
             print('render --- ratio --- ', self.info)
             cv2.startWindowThread()
@@ -194,9 +194,9 @@ class ViewshedEnv(gym.Env):
         #done ?
         
         if ratio > self.ratio_threshhold:
-            reward = self.reward_good_step
+            reward = self.reward_good_step + ratio
         else:
-            reward = self.reward_bad_step
+            reward = self.reward_bad_step + ratio
                 
         if self.iteration > self.max_iter or reward == self.reward_good_step:
             done = 1
