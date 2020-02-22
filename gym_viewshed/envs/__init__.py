@@ -1,1 +1,2 @@
 from gym_viewshed.envs.viewshed_env import ViewshedEnv
+from gym_viewshed.envs.viewshed_basic_env import ViewshedEnv

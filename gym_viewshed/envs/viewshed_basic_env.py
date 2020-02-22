@@ -1,6 +1,5 @@
 """
 Created on Mon Feb  3 13:41:56 2020
-
 @author: Daulet Baimukashev
 """
 
@@ -21,7 +20,6 @@ import matplotlib.pyplot as plt
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 #CUDA_VISIBLE_DEVICES = 0
-#import torch
 
 env.scratchWorkspace = r"in_memory" #r"../data/input_raster"
 env.overwriteOutput = True
@@ -49,12 +47,10 @@ class ViewshedEnv(gym.Env):
     Actions:
         Type: Discrete
         Num Action
-        0   Rotate +5 deg
-        1   Rotate -5 deg
-        2   Move +5 pixel x
-        3   Move -5 pixel x
-        4   Move +5 pixel y
-        5   Move -5 pixel y
+        0   Move +5 pixel x
+        1   Move -5 pixel x
+        2   Move +5 pixel y
+        3   Move -5 pixel y
 
     Reward:
         Reward 1 for game over
@@ -72,12 +68,12 @@ class ViewshedEnv(gym.Env):
 
         # input Raster
 
-        #self.city_array = 255 - np.array((Image.open(r"C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/sample_city_1.png").resize((12000,13000)).convert('L')), dtype=np.uint8)
-
         self.city_array = 255 - np.array((Image.open(r"../data/img1_-650_450_1300_900.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        #self.city_array =  
         self.im_height, self.im_width = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         print(self.city_array.dtype)
+        print('Hello viewshed 2')
         #self.input_raster.save("../data/input_raster/CITY_ONE.tif")
         #self.input_raster = r"../data/input_raster/QWERTY1.tif"
 
@@ -126,7 +122,6 @@ class ViewshedEnv(gym.Env):
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
         self.max_iter = 200
-
 
     def step(self, action):
         #assert self.action_space.contains(action)
