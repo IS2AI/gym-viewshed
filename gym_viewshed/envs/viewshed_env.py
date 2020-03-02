@@ -11,29 +11,25 @@ import time
 import arcpy
 from arcpy import env
 from arcpy.sa import Viewshed2
-from arcpy.da import *
+#from arcpy.da import *
 
 import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 import matplotlib.pyplot as plt
 
+
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
-#CUDA_VISIBLE_DEVICES = 0
-#import torch
 
-env.scratchWorkspace = r"in_memory" #r"../data/input_raster"
 env.overwriteOutput = True
+env.scratchWorkspace = r"in_memory"
 env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
-env.geographicTransformations = "Arc_1950_To_WGS_1984_5"
-#env.parallelProcessingFactor = "400%"
+env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
+#env.parallelProcessingFactor = "200%"
 env.processorType = "GPU"
 env.gpuID = "0"
-env.compression = "LZ77" #"LZ77" #"JPEG" # LZW
-env.tileSize = "128 128"
-env.pyramid = "PYRAMIDS -1 CUBIC LZ77 NO_SKIP"
-#arcpy.ClearEnvironment(env.scratchWorkspace)
+
 
 class ViewshedEnv(gym.Env):
     """
@@ -71,37 +67,27 @@ class ViewshedEnv(gym.Env):
     def __init__(self):
 
         # input Raster
-
-        #self.city_array = 255 - np.array((Image.open(r"C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/sample_city_1.png").resize((12000,13000)).convert('L')), dtype=np.uint8)
-
-        self.city_array = 255 - np.array((Image.open(r"../data/img1_-650_450_1300_900.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
-        self.im_height, self.im_width = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
+        self.city_array = 255 - np.array((Image.open(r"../data/sample_city_1.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
-        print(self.city_array.dtype)
-        #self.input_raster.save("../data/input_raster/CITY_ONE.tif")
-        #self.input_raster = r"../data/input_raster/QWERTY1.tif"
-
-        # input shapefil
-        self.shape_file = r"C:/Users/Akmaral/Desktop/visibility/RL_visibility_analysis/data/input_shapefile/4/points_XYTableToPoint_second.shp"
-
-        #self.shape_file = r"../data/input_shapefile/8/points_XYTableToPoint_second.shp"
+        # input shapefile
+        self.shape_file = r"../data/input_shapefile/4/points_XYTableToPoint_second.shp"
         # viewshed params
         self.info = 0
         self.info_x = 0.0
         self.info_y = 0.0
-        self.init_x = 8000 #self.im_width/2 #310
-        self.init_y = 2000 #self.im_height/2 #80
+        self.init_x = 200 #self.im_width/2 #310
+        self.init_y = 200 #self.im_height/2 #80
         self.init_azimuth1 = 0
-        self.init_azimuth2 = 30
-        self.init_outer_rad = 1000
+        self.init_azimuth2 = 60
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "ALL_SIGHTLINES"
-        self.radius_is_3d = 'True'
-        self.observer_height_ = 1000
-        self.vertical_upper_angle = -50
-        self.vertical_lower_angle = -80
-        self.inner_radius = 0
-        self.outer_radius = 1000
+        self.radius_is_3d = 'False'
+        self.observer_height_ = 40
+        self.vertical_lower_angle  = -70
+        self.vertical_upper_angle = 45
+        self.inner_radius = 30
+        self.outer_radius = 200
 
         # camera params
         self.camera_number = 1
@@ -109,7 +95,7 @@ class ViewshedEnv(gym.Env):
         self.delta_theta = 14
         self.delta_x = 15
         self.delta_y = 15
-        self.delta_fv = 30 # Field of View
+        self.delta_fv = 360  # Field of View
         self.max_render = 100
 
         # gym env params
@@ -117,7 +103,7 @@ class ViewshedEnv(gym.Env):
         self.action_space = spaces.Discrete(6)
         self.state = np.zeros((self.im_height, self.im_width)) # self.city_Array
 
-        self.is_render = 'True'
+        self.is_render = 'False'
         self.iteration = 0
         self.seed(0)
 
@@ -126,7 +112,6 @@ class ViewshedEnv(gym.Env):
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
         self.max_iter = 200
-
 
     def step(self, action):
         #assert self.action_space.contains(action)
@@ -150,14 +135,14 @@ class ViewshedEnv(gym.Env):
 
     def render(self, mode='human'):
         # to show
-        show_array = self.state*100
-        show_array = np.resize(show_array, (500,500))
+        show_array = self.state * 100
+
         if self.is_render == 'True' and self.iteration < self.max_render :
-            #print('render --- ratio --- ', self.info)
+            print('render --- ratio --- ', self.info)
             cv2.startWindowThread()
             cv2.namedWindow("preview")
             cv2.imshow("preview", show_array)
-            cv2.waitKey(500)
+            cv2.waitKey(0)
             cv2.destroyAllWindows()
 
     def close(self):
@@ -166,15 +151,15 @@ class ViewshedEnv(gym.Env):
     def reset_shapefile(self, shape_file):
 
         #print('Reset init camera locations')
-        fieldlist=['AZIMUTH1','AZIMUTH2','RADIUS2']
+        fieldlist=['AZIMUTH1','AZIMUTH2']
         tokens=['SHAPE@X','SHAPE@Y']
         with arcpy.da.UpdateCursor(shape_file,tokens+fieldlist) as cursor:
             for row in cursor:
+                print(0)
                 row[0]= self.init_x
                 row[1]= self.init_y
                 row[2]= self.init_azimuth1
                 row[3]= self.init_azimuth2
-                row[4]= self.init_outer_rad
                 cursor.updateRow(row)
         del cursor
 
@@ -232,7 +217,7 @@ class ViewshedEnv(gym.Env):
         angle_fv = self.delta_fv # Field of View
 
         # matrix_action_observer [1,5] ---> for camera N, update 1 action
-        if action_type == 4:
+        if action_type == 0:
             # rotate + delta deg
             # change the shape file
             tokens=["AZIMUTH1", "AZIMUTH2"]
@@ -252,7 +237,7 @@ class ViewshedEnv(gym.Env):
                         cursor.updateRow(row)
 
             del cursor
-        elif action_type == 5:
+        if action_type == 1:
             # rotate - delta deg
             # change the shape file
             tokens=["AZIMUTH1", "AZIMUTH2"]
@@ -271,7 +256,7 @@ class ViewshedEnv(gym.Env):
                         row[1] =  temp2
                         cursor.updateRow(row)
             del cursor
-        elif action_type == 0:
+        if action_type == 2:
             # move in x -> + delta right
             # change the shape file
             tokens=['SHAPE@X']
@@ -288,7 +273,7 @@ class ViewshedEnv(gym.Env):
                         self.info_x = row[0]
                         cursor.updateRow(row)
             del cursor
-        elif action_type == 1:
+        if action_type == 3:
             # move in x <- - delta left
             # change the shape file
             tokens=['SHAPE@X']
@@ -305,7 +290,7 @@ class ViewshedEnv(gym.Env):
                         self.info_x = row[0]
                         cursor.updateRow(row)
             del cursor
-        elif action_type == 2:
+        if action_type == 4:
             # move in y + delta up
             # change the shape file
             tokens=['SHAPE@Y']
@@ -323,8 +308,8 @@ class ViewshedEnv(gym.Env):
                         self.info_y = row[0]
                         cursor.updateRow(row)
             del cursor
-        elif action_type == 3:
-            # move in y - delta down
+        if action_type == 5:
+            # move in y - delta up
             # change the shape file
             tokens=['SHAPE@Y']
             with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
@@ -340,9 +325,6 @@ class ViewshedEnv(gym.Env):
                         self.info_y = row[0]
                         cursor.updateRow(row)
             del cursor
-        else:
-            raise ValueError('Invalid action for viewshed_env')
-
 
     def create_viewshed(self, input_raster, shape_file):
 
@@ -351,8 +333,6 @@ class ViewshedEnv(gym.Env):
         #env.workspace = r"D:/windows/dev/projects/Visibility_analysis/python/RL_visibility_analysis/data/input_raster"
         #env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
         #env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
-
-
 
         analysis_type_ = self.analysis_type
         analysis_method_ = self.analysis_method
@@ -369,19 +349,18 @@ class ViewshedEnv(gym.Env):
         #shape_file
 
         start_t = time.time()
-        outputViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
+        outViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
                                  vertical_error= 0, out_observer_region_relationship_table= "", refractivity_coefficient= 0.13,
                                  surface_offset= 0, observer_offset = 0, observer_elevation = observer_height_, inner_radius= inner_radius_,
                                  outer_radius= outer_radius_, inner_radius_is_3d = radius_is_3d_, outer_radius_is_3d = radius_is_3d_,
                                  horizontal_start_angle= "AZIMUTH1", horizontal_end_angle= "AZIMUTH2", vertical_upper_angle = vertical_upper_angle_,
                                  vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
+
         print('elapsed for viewshed', time.time() - start_t)
-        output_array = arcpy.RasterToNumPyArray(outputViewshed2) # output array -> each cell how many observer can see that pixel
 
-        print('elapsed2 for viewshed', time.time() - start_t)
-
+        output_array = arcpy.RasterToNumPyArray(outViewshed2) # output array -> each cell how many observer can see that pixel
         output_array[output_array == 255] = 0
-        self.state = output_array
+
         visible_points = output_array > 0
         visible_area = visible_points.sum()
 
