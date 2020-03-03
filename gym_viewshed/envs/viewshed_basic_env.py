@@ -65,13 +65,13 @@ class ViewshedBasicEnv(gym.Env):
     def __init__(self):
 
         # input Raster
-        self.city_array = np.array((Image.open(r"../data/total_7x7_correct_small.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        self.city_array = np.array((Image.open(r"../data/sample_cityA.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
         #self.city_array = np.zeros((800,800))
         #self.city_array[0:500,600:790] = 10
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         # input shapefile
-        self.shape_file = r"../data/input_shapefile/10/points_XYTableToPoint_second.shp"
+        self.shape_file = r"../data/input_shapefile/1c/points_XYTableToPoint_second.shp"
         # viewshed params
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "ALL_SIGHTLINES"
@@ -80,11 +80,11 @@ class ViewshedBasicEnv(gym.Env):
         self.vertical_upper_angle = 90
         self.radius_is_3d = 'True'
         self.inner_radius = 0
-        self.outer_radius = 375
+        self.outer_radius = 70
         # init params
-        self.init_x = 1010 #self.im_width/2
-        self.init_y = 800 #self.im_height/2
-        self.init_observer_dist = self.outer_radius*2 + 10 # how far init observer from each other
+        self.init_x = 10 #self.im_width/2
+        self.init_y = 50 #self.im_height/2
+        self.init_observer_dist = 10 # how far init observer from each other
         self.init_azimuth1 = 0
         self.init_azimuth2 = 360
         # info extra about the env
@@ -92,20 +92,20 @@ class ViewshedBasicEnv(gym.Env):
         self.info_x = 0.0
         self.info_y = 0.0
         # observer params
-        self.camera_number = 10
+        self.camera_number = 1
         self.action_number = 4
-        self.delta_x = 50
-        self.delta_y = 50
+        self.delta_x = 15
+        self.delta_y = 15
         # gym env params
         self.observation_space = spaces.Box(low=0, high=255, shape=(self.im_width,self.im_height, 1), dtype = np.uint8)
-        self.action_space = spaces.Discrete(40)
+        self.action_space = spaces.Discrete(4)
         self.state = np.zeros((self.im_height, self.im_width)) # self.city_array
         self.iteration = 0
         # reward
-        self.ratio_threshhold = 0.3
-        self.reward_good_step = 1
+        self.ratio_threshhold = 0.05
+        self.reward_good_step = 5
         self.reward_bad_step = -0.1
-        self.max_iter = 200
+        self.max_iter = 400
         # rendering
         self.is_render = 'True'
         self.max_render = 100
@@ -133,7 +133,7 @@ class ViewshedBasicEnv(gym.Env):
     def render(self, mode='human'):
         # to show
         if self.is_render == 'True' and self.iteration < self.max_render :
-            #print('render --- ratio --- ', self.info)
+            print('render --- ratio --- ', self.info)
             self.show_image(self.state, self.imshow_dt)
 
     def close(self):
@@ -144,7 +144,7 @@ class ViewshedBasicEnv(gym.Env):
         show_array = show_array * 100
         show_array = Image.fromarray(show_array, 'L')
         show_array = np.array(show_array)
-        show_array = cv2.resize(show_array, (800,800), interpolation = cv2.INTER_AREA)
+        #show_array = cv2.resize(show_array, (800,800), interpolation = cv2.INTER_AREA)
         cv2.startWindowThread()
         cv2.namedWindow("preview")
         cv2.imshow("preview", show_array)
@@ -162,8 +162,8 @@ class ViewshedBasicEnv(gym.Env):
             for row in cursor:
                 delta += 1
                 #print('hei')
-                row[0]= self.init_x + (delta%4)*X
-                row[1]= self.init_y + (delta//4)*X*1.5
+                row[0]= 150#self.init_x + (delta%4)*X
+                row[1]= 150#self.init_y + (delta//4)*X*1.5
                 row[2]= self.init_azimuth1
                 row[3]= self.init_azimuth2
                 x = row[0]
@@ -212,9 +212,9 @@ class ViewshedBasicEnv(gym.Env):
         #done ?
 
         if ratio > self.ratio_threshhold:
-            reward = self.reward_good_step + ratio*5
+            reward = self.reward_good_step
         else:
-            reward = self.reward_bad_step + ratio*5
+            reward = self.reward_bad_step
 
         if self.iteration > self.max_iter or reward == self.reward_good_step:
             done = 1
@@ -334,7 +334,7 @@ class ViewshedBasicEnv(gym.Env):
 
         outViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
                                  vertical_error= 0, out_observer_region_relationship_table= "", refractivity_coefficient= 0.13,
-                                 surface_offset= 0, observer_offset = 0, observer_elevation = "OFFSETA", inner_radius= inner_radius_,
+                                 surface_offset= 0, observer_offset = 0, observer_elevation = 10, inner_radius= inner_radius_,
                                  outer_radius= "RADIUS2", inner_radius_is_3d = radius_is_3d_, outer_radius_is_3d = radius_is_3d_,
                                  horizontal_start_angle = "AZIMUTH1", horizontal_end_angle= "AZIMUTH2", vertical_upper_angle = vertical_upper_angle_,
                                  vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
