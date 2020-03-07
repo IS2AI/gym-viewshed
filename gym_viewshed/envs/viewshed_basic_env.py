@@ -74,7 +74,7 @@ class ViewshedBasicEnv(gym.Env):
         self.shape_file = r"../data/input_shapefile/1c/points_XYTableToPoint_second.shp"
         # viewshed params
         self.analysis_type = "FREQUENCY"
-        self.analysis_method = "ALL_SIGHTLINES"
+        self.analysis_method = "PERIMETER_SIGHTLINES"
         self.observer_height = 0
         self.vertical_lower_angle  = -90
         self.vertical_upper_angle = 90
@@ -82,8 +82,8 @@ class ViewshedBasicEnv(gym.Env):
         self.inner_radius = 0
         self.outer_radius = 70
         # init params
-        self.init_x = 10 #self.im_width/2
-        self.init_y = 50 #self.im_height/2
+        self.init_x = 150 #self.im_width/2
+        self.init_y = 150 #self.im_height/2
         self.init_observer_dist = 10 # how far init observer from each other
         self.init_azimuth1 = 0
         self.init_azimuth2 = 360
@@ -109,7 +109,7 @@ class ViewshedBasicEnv(gym.Env):
         # rendering
         self.is_render = 'True'
         self.max_render = 100
-        self.imshow_dt = 0
+        self.imshow_dt = 1000
         self.seed(0)
         print('init ViewshedBasicEnv successfully!')
 
@@ -339,7 +339,7 @@ class ViewshedBasicEnv(gym.Env):
                                  horizontal_start_angle = "AZIMUTH1", horizontal_end_angle= "AZIMUTH2", vertical_upper_angle = vertical_upper_angle_,
                                  vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
 
-        #print('elapsed for viewshed', time.time() - start_t)
+        print('elapsed for viewshed', time.time() - start_t)
         output_array = arcpy.RasterToNumPyArray(outViewshed2) # output array -> each cell how many observer can see that pixel
         output_array[output_array == 255] = 0
         visible_points = output_array > 0
