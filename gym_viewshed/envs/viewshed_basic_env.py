@@ -65,13 +65,13 @@ class ViewshedBasicEnv(gym.Env):
     def __init__(self):
 
         # input Raster
-        self.city_array = np.array((Image.open(r"../data/sample_cityA.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        self.city_array = np.array((Image.open(r"../data/total_7x7_correct_small.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
         #self.city_array = np.zeros((800,800))
         #self.city_array[0:500,600:790] = 10
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         # input shapefile
-        self.shape_file = r"../data/input_shapefile/1c/points_XYTableToPoint_second.shp"
+        self.shape_file = r"../data/input_shapefile/10/points_XYTableToPoint_second.shp"
         # viewshed params
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "PERIMETER_SIGHTLINES"
@@ -80,7 +80,7 @@ class ViewshedBasicEnv(gym.Env):
         self.vertical_upper_angle = 90
         self.radius_is_3d = 'True'
         self.inner_radius = 0
-        self.outer_radius = 70
+        self.outer_radius = 300
         # init params
         self.init_x = 150 #self.im_width/2
         self.init_y = 150 #self.im_height/2
@@ -107,7 +107,7 @@ class ViewshedBasicEnv(gym.Env):
         self.reward_bad_step = -0.1
         self.max_iter = 400
         # rendering
-        self.is_render = 'True'
+        self.is_render = 'False'
         self.max_render = 100
         self.imshow_dt = 1000
         self.seed(0)
@@ -334,7 +334,7 @@ class ViewshedBasicEnv(gym.Env):
 
         outViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
                                  vertical_error= 0, out_observer_region_relationship_table= "", refractivity_coefficient= 0.13,
-                                 surface_offset= 0, observer_offset = 0, observer_elevation = 10, inner_radius= inner_radius_,
+                                 surface_offset= 0, observer_offset = 0, observer_elevation = 0, inner_radius= inner_radius_,
                                  outer_radius= "RADIUS2", inner_radius_is_3d = radius_is_3d_, outer_radius_is_3d = radius_is_3d_,
                                  horizontal_start_angle = "AZIMUTH1", horizontal_end_angle= "AZIMUTH2", vertical_upper_angle = vertical_upper_angle_,
                                  vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
