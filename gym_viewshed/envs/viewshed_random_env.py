@@ -64,8 +64,8 @@ class ViewshedRandomEnv(gym.Env):
 
     def __init__(self):
 
-        # input Raster
-        self.city_array = np.array((Image.open(r"../data/total_7x7_correct_small_small.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        #input Raster
+        self.city_array = np.array((Image.open(r"../data/images/total_city7_nearest.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
         #self.city_array = np.ones((800,800))
         #self.city_array[0:500,600:790] = 10
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
@@ -73,7 +73,7 @@ class ViewshedRandomEnv(gym.Env):
         # input shapefile
         self.shape_file = r"../data/input_shapefile/10/points_XYTableToPoint_second.shp"
         # camera locations
-        self.a = 10*np.repeat(np.arange(10), 3)
+        self.a = 500*np.repeat(np.arange(10), 3)
         self.observer_locations = self.a.reshape(10,3)   #10*np.zeros((10,3))
         # viewshed params
         self.analysis_type = "FREQUENCY"
@@ -83,11 +83,11 @@ class ViewshedRandomEnv(gym.Env):
         self.vertical_upper_angle = 90
         self.radius_is_3d = 'True'
         self.inner_radius = 0
-        self.outer_radius = 300
+        self.outer_radius = 750
         # init params
-        self.init_x = 150 #self.im_width/2
-        self.init_y = 150 #self.im_height/2
-        self.init_observer_dist = 10 # how far init observer from each other
+        self.init_x = 1000 #self.im_width/2
+        self.init_y = 1000 #self.im_height/2
+        self.init_observer_dist = 500 # how far init observer from each other
         self.init_azimuth1 = 0
         self.init_azimuth2 = 360
         # info extra about the env
@@ -97,10 +97,10 @@ class ViewshedRandomEnv(gym.Env):
         # observer params
         self.camera_number = 10
         # search parameter
-        self.radius = 5
-        self.radius_delta = 3
+        self.radius = 1
+        self.radius_delta = 1
         self.move_step = 1
-        self.min_height = 0
+        self.min_height = 20
         # rendering
         self.is_render = 'True'
         self.max_render = 100
@@ -114,7 +114,7 @@ class ViewshedRandomEnv(gym.Env):
 
     def reset(self):
         self.reset_shapefile(self.shape_file)
-        self.state = np.zeros((self.im_height, self.im_width)) # self.state
+        self.state = np.zeros((self.im_height, self.im_width))
         self.iteration = 0
         return self.state
 
@@ -128,20 +128,15 @@ class ViewshedRandomEnv(gym.Env):
             X = self.init_observer_dist
             for row in cursor:
                 delta += 1
-                #print('hei')
-                row[0]= self.init_x + (delta%4)*X
-                row[1]= self.init_y + (delta//4)*X*1.5
+                row[0]= self.init_x + (delta%self.camera_number)*X
+                row[1]= self.init_y + (delta//self.camera_number)*X*1.5
                 row[2]= self.init_azimuth1
                 row[3]= self.init_azimuth2
                 x = row[0]
                 y = row[1]
                 p = str(x) + " " + str(y)
                 p_value = arcpy.GetCellValue_management(self.input_raster, p)
-                #print('p_value', p_value)
-                if int(p_value[0]) > 1:
-                    row[4] = int(p_value[0])
-                else:
-                    row[4]=  int(p_value[0])
+                row[4] = int(p_value[0])
                 row[5]= self.outer_radius
                 cursor.updateRow(row)
         del cursor
@@ -157,10 +152,10 @@ class ViewshedRandomEnv(gym.Env):
 
     def show_image(self,show_array,dt):
 
-        show_array = show_array * 100
+        show_array = show_array * 20
         show_array = Image.fromarray(show_array, 'L')
         show_array = np.array(show_array)
-        #show_array = cv2.resize(show_array, (800,800), interpolation = cv2.INTER_AREA)
+        show_array = cv2.resize(show_array, (800,800), interpolation = cv2.INTER_AREA)
         cv2.startWindowThread()
         cv2.namedWindow("preview")
         cv2.imshow("preview", show_array)
@@ -197,88 +192,82 @@ class ViewshedRandomEnv(gym.Env):
             radius = self.radius
             is_found = 0
 
-            x = self.observer_locations[n,0]
-            y = self.observer_locations[n,1]
+            y = self.observer_locations[n,0]
+            x = self.observer_locations[n,1]
             z = self.observer_locations[n,2]
 
             while is_found == 0:
-                xy_coor = self.get_spiral(x,y,radius,move_step)
-                h,w = xy_coor.shape
+                yx_coor = self.get_spiral(y,x,radius,move_step)
+                h,w = yx_coor.shape
                 observer_points = []
                 for i in range(h):
-                    observer_height = self.city_array[xy_coor[i][0], xy_coor[i][1]]
+                    observer_height = self.city_array[yx_coor[i][0], yx_coor[i][1]]
                     if observer_height > min_height:
-                        observer_distance = math.sqrt((x-xy_coor[i][0])**2 + (y-xy_coor[i][1])**2)
-                        observer_points.append([xy_coor[i][0], xy_coor[i][1], observer_height, observer_distance])
+                        observer_distance = math.sqrt((y-yx_coor[i][0])**2 + (x-yx_coor[i][1])**2)
+                        observer_points.append([yx_coor[i][0], yx_coor[i][1], observer_height, observer_distance])
 
                 if len(observer_points) > 0:
                     is_found = 1
                     # sort by h and get first row
-                    observer_points = sorted(observer_points, key=lambda l:l[3], reverse=True)
+                    observer_points = sorted(observer_points, key=lambda l:l[3], reverse=False)
                     # or random
-                    next_x = observer_points[0][0]
-                    next_y = observer_points[0][1]
+                    next_y = observer_points[0][0]
+                    next_x = observer_points[0][1]
                     next_z = observer_points[0][2]
 
                 radius = radius + self.radius_delta
 
             # next_x next_y next_z
-            self.observer_locations[n,0] = next_x
-            self.observer_locations[n,1] = next_y
+            self.observer_locations[n,0] = next_y
+            self.observer_locations[n,1] = next_x
             self.observer_locations[n,2] = next_z
 
             if n == self.camera_number-1:
                 is_done = 1
 
-    def get_spiral(self, x, y, radius, move_step):
+    def get_spiral(self, y, x, radius, move_step):
+        
+        yx_list = []
+        temp_yi = y-radius
+        temp_xi = x-radius
+        temp_yf = temp_yi + (2*radius+1)
+        temp_xf = temp_xi + (2*radius+1) 
 
-        len_s = 2*radius+1
-        xy_list = []
-
-        temp_y = y-radius
-        temp_x = x-radius
-
-        if temp_x<0:
-            temp_x = 0
-        if temp_y<0:
-            temp_y = 0
-
-        # move right (bottom)
-        x_coor = np.arange(temp_x, temp_x + len_s, move_step)
-        y_coor = temp_y*np.ones(len(x_coor))
+        # move right (up)
+        x_coor = np.arange(temp_xi, temp_xf+1, move_step)  # +1 to compensate the np.arange below
+        y_coor = temp_yi*np.ones(len(x_coor))
         for i in range(len(x_coor)):
-            xy_list.append([x_coor[i],y_coor[i]])
+            yx_list.append([y_coor[i],x_coor[i]])
 
         # move down (right)
-        y_coor = np.arange(temp_y, temp_y + len_s, move_step)
-        x_coor = (temp_x+len_s)*np.ones(len(y_coor))
+        y_coor = np.arange(temp_yi, temp_yf+1, move_step)
+        x_coor = temp_xf*np.ones(len(y_coor))
         for i in range(len(y_coor)):
-            xy_list.append([x_coor[i],y_coor[i]])
+            yx_list.append([y_coor[i],x_coor[i]])
 
         # move right (bottom)
-        x_coor = np.arange(temp_x, temp_x + len_s, move_step)
-        y_coor = (temp_y+len_s)*np.ones(len(x_coor))
+        x_coor = np.arange(temp_xi, temp_xf+1, move_step)
+        y_coor = temp_yf*np.ones(len(x_coor))
         for i in range(len(x_coor)):
-            xy_list.append([x_coor[i],y_coor[i]])
+            yx_list.append([y_coor[i],x_coor[i]])
 
         # move down (left)
-        y_coor = np.arange(temp_y, temp_y + len_s, move_step)
-        x_coor = (temp_x)*np.ones(len(y_coor))
+        y_coor = np.arange(temp_yi, temp_yf+1, move_step)
+        x_coor = temp_xi*np.ones(len(y_coor))
         for i in range(len(y_coor)):
-            xy_list.append([x_coor[i],y_coor[i]])
+            yx_list.append([y_coor[i],x_coor[i]])
 
         # limit the xy_arr pairs [x,y]
-        xy_arr = np.asarray(xy_list, dtype=np.int16)
-        xy_arr = np.clip(xy_arr, 0, self.im_height)
+        yx_arr = np.asarray(yx_list, dtype=np.int16)
+        yx_arr = np.clip(yx_arr, 0, self.im_height)
 
-        return xy_arr
+        return yx_arr
 
-    def update_shapefile_random(self, shape_file, observer_locations):
+    def update_shapefile_random(self, shape_file, observer_loc):
         '''
         For all observer points
         Update the shapefile
         '''
-
         #update observer height and x and y
         fields = ['OFFSETA']
         tokens=['SHAPE@X', 'SHAPE@Y']
@@ -286,10 +275,9 @@ class ViewshedRandomEnv(gym.Env):
             s = -1
             for row in cursor:
                 s = s + 1
-                print('set xyz')
-                row[0] = observer_locations[s,1] #observer_locations[s,0]
-                row[1] = 1001 - observer_locations[s,0] #observer_locations[s,1]
-                row[2] = observer_locations[s,2]
+                row[0] = observer_loc[s,1] #observer_locations[s,0]
+                row[1] = self.im_height - observer_loc[s,0] - 1 #observer_locations[s,1]
+                row[2] = observer_loc[s,2] 
                 cursor.updateRow(row)
         del cursor
 
