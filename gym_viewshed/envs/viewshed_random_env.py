@@ -4,7 +4,6 @@ Created on Mon Feb  3 13:41:56 2020
 @author: Daulet Baimukashev
 """
 
-
 import numpy as np
 from PIL import Image
 import cv2
@@ -29,7 +28,7 @@ env.compression = "LZ77" #"LZ77" #"JPEG" # LZW
 env.tileSize = "128 128"
 env.pyramid = "PYRAMIDS -1 CUBIC LZ77 NO_SKIP"
 
-class ViewshedBasicEnv(gym.Env):
+class ViewshedRandomEnv(gym.Env):
     """
     Description:
         Viewshed analysis on raster data
@@ -72,6 +71,8 @@ class ViewshedBasicEnv(gym.Env):
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         # input shapefile
         self.shape_file = r"../data/input_shapefile/10/points_XYTableToPoint_second.shp"
+        # camera locations
+        self.observer_locations = np.zeros((10,3)) 
         # viewshed params
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "PERIMETER_SIGHTLINES"
@@ -111,7 +112,7 @@ class ViewshedBasicEnv(gym.Env):
         self.max_render = 100
         self.imshow_dt = 1000
         self.seed(0)
-        print('init ViewshedBasicEnv successfully!')
+        print('init ViewshedRandomEnv successfully!')
 
     def step(self, action):
         #assert self.action_space.contains(action
@@ -179,24 +180,104 @@ class ViewshedBasicEnv(gym.Env):
                 cursor.updateRow(row)
         del cursor
 
+    
+    
+    def generate_random_points(self):
+        '''
+        for camera 1:n
+            find the closest point
+            move to that point
+        
+        return updated_camera_points    
+        '''
+        camera_n = self.camera_number
+        city_array = self.city_array 
+        observer_locations = self.observer_locations
+        
+        for i in range(camera_n):
+            curr_x = observer_locations[i,0]
+            curr_y = observer_locations[i,1]
+            curr_z = observer_locations[i,2]
+            
+            # find the closest point
+            self.move_closest_point(city_array, i, curr_x, curr_y, curr_z)
+
+    def move_closest_point(self, city_array, i, x, y, z):
+        
+        # given the point with the coor x,y,z find next positions
+        # x,y,z
+        is_done = 0
+        count = 0
+        move_step = 1
+        
+        while is_done==0:
+            count = count + 1
+            radius = 2 #count
+            
+            xy_coor = self.get_spiral(x,y,radius,move_step)
+            h,w = xy_coor.shape
+            
+            for i in range(h):
+            
+                #next_x, next_y, next_z = find_closest_point(xy_coor)
+               
+                if height > 100:
+                    observer_point.append(b[i])
+                    
+                    
+            # find the next move ???
+            city_array(x,y)
+                     
+            if count == self.camera_number:
+                is_done = 1
+                
+        # next_x next_y next_z
+        self.observer_locations[0,0] = next_x
+        self.observer_locations[0,1] = next_y
+        self.observer_locations[0,2] = next_z
+
+    def get_spiral(self, x,y, radius, move_step):
+        
+        len_s = 2*radius+1
+        xy_list = []
+        
+        temp_y = y-radius
+        temp_x = x-radius
+        
+        # move right (bottom)
+        x_coor = np.arange(temp_x, temp_x + len_s, move_step)
+        y_coor = temp_y*np.ones(len(x_coor))
+        xy_list.append([x_coor,y_coor])
+        
+        # move down (right)
+        y_coor = np.arange(temp_y, temp_y + len_s, move_step)
+        x_coor = (temp_x+len_s)*np.ones(len(x_coor))
+        xy_list.append([x_coor,y_coor])    
+        
+        # move right (bottom)
+        x_coor = np.arange(temp_x, temp_x + len_s, move_step)
+        y_coor = (temp_y+len_s)*np.ones(len(x_coor))
+        xy_list.append([x_coor,y_coor])
+
+        # move down (left)
+        y_coor = np.arange(temp_y, temp_y + len_s, move_step)
+        x_coor = (temp_x)*np.ones(len(x_coor))
+        xy_list.append([x_coor,y_coor])      
+        
+        # limit the xy_arr pairs [x,y] 
+        xy_arr = np.asarray(xy_list)
+        xy_arr = np.clip(xy_arr, 0, self.im_height)
+                
+        return xy_arr
+
     def act_discrete(self, input_raster, shape_file, action):
 
-        # this function needs to do:
-        # map the "action" to CELL value update in shapefile (actions x observers)
-        # action [0 ... N] --- > action type x observerN
-        # here assumption is that action will be 1xD array for all N cameras, and should be interpreted as which action to which observer
-
-        # for 1 camera
-        action_type = action%self.action_number
-        observer_n = action//self.action_number + 1
-        #print('action', action) # [0 ... 5]
-        #print('action_type',action_type) # [0 ... 5]
-        #print('observer_n',observer_n ) # [1 ... ]
+        # generate random points
+        self.generate_random_points()
         # update shapefile
-        self.update_shapefile_discrete(shape_file, action_type, observer_n)
+        self.update_shapefile_random(shape_file, self.observer_locations)
         # create the viewshed
         output_array, visible_area = self.create_viewshed(input_raster, shape_file)
-        # interpret the viewshed output to some value - state , reward etc
 
         # next_state ?
         next_state = output_array
@@ -206,120 +287,29 @@ class ViewshedBasicEnv(gym.Env):
         self.state = output_array
         self.info = ratio
 
-        #reward ?
-        #reward = visible_area/output_array.size
+        return next_state
 
-        #done ?
 
-        if ratio > self.ratio_threshhold:
-            reward = self.reward_good_step
-        else:
-            reward = self.reward_bad_step
-
-        if self.iteration > self.max_iter or reward == self.reward_good_step:
-            done = 1
-        else:
-            done = 0
-
-        return next_state, reward, done
-
-    def update_shapefile_discrete(self, shape_file, action_type, observer_n):
-
-        delta_x = self.delta_x
-        delta_y = self.delta_y
-
-        if action_type == 0:
-            # move in x -> + delta right
-            # change the shape file
-            tokens=['SHAPE@X']
-            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
-                s = 0
-                for row in cursor:
-                    s = s + 1
-                    if s == observer_n:
-                        #print('set x+')
-                        row[0]= row[0] + delta_x
-                        if row[0] >= self.im_width:
-                            row[0] = self.im_width - 1
-                            #print('wall right')
-                        self.info_x = row[0]
-                        cursor.updateRow(row)
-            del cursor
-        elif action_type == 1:
-            # move in x <- - delta left
-            # change the shape file
-            tokens=['SHAPE@X']
-            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
-                s = 0
-                for row in cursor:
-                    s = s + 1
-                    if s == observer_n:
-                        #print('set x-')
-                        row[0]= row[0] - delta_x
-                        if row[0] <= 0:
-                            row[0] = 1
-                            #print('wall left')
-                        self.info_x = row[0]
-                        cursor.updateRow(row)
-            del cursor
-        elif action_type == 2:
-            # move in y + delta up
-            # change the shape file
-            tokens=['SHAPE@Y']
-            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
-                s = 0
-                for row in cursor:
-                    s = s + 1
-                    if s == observer_n:
-                        #print('set y+',row[0])
-                        row[0]= row[0] + delta_y
-                        #print('after plus', row[1])
-                        if row[0] >= self.im_height:
-                            row[0] = self.im_height - 1
-                            #print('wall up')
-                        self.info_y = row[0]
-                        cursor.updateRow(row)
-            del cursor
-        elif action_type == 3:
-            # move in y - delta down
-            # change the shape file
-            tokens=['SHAPE@Y']
-            with arcpy.da.UpdateCursor(shape_file,tokens) as cursor:
-                s = 0
-                for row in cursor:
-                    s = s + 1
-                    if s == observer_n:
-                        #print('set y-', row[0])
-                        row[0]= row[0] - delta_y
-                        if row[0] <= 0:
-                            row[0] = 1
-                            #print('wall down')
-                        self.info_y = row[0]
-                        cursor.updateRow(row)
-            del cursor
-        else:
-            raise ValueError('Invalid action for viewshed_env')
-
-        #update observer height
+    def update_shapefile_random(self, shape_file, observer_locations):
+        '''
+        For all observer points
+        Update the shapefile
+        '''
+        
+        #update observer height and x and y
         fields = ['OFFSETA']
         tokens=['SHAPE@X', 'SHAPE@Y']
         with arcpy.da.UpdateCursor(shape_file,tokens+fields) as cursor:
-            s = 0
+            s = -1
             for row in cursor:
                 s = s + 1
-                if s == observer_n:
-                    #print('set h', row[0])
-                    x = row[0]
-                    y = row[1]
-                    p = str(x) + " " + str(y)
-                    p_value = arcpy.GetCellValue_management(self.input_raster, p)
-                    if int(p_value[0]) > 1:
-                        row[2] = int(p_value[0])
-                    else:
-                        row[2] = int(p_value[0])
-                    cursor.updateRow(row)
+                print('set xyz')
+                row[0] = observer_locations[s,0]
+                row[1] = observer_locations[s,1]
+                row[2] = observer_locations[s,2]
+                cursor.updateRow(row)
         del cursor
-
+        
     def create_viewshed(self, input_raster, shape_file):
 
         analysis_type_ = self.analysis_type
