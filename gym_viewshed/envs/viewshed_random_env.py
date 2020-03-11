@@ -3,7 +3,6 @@ Created on Mon Feb  3 13:41:56 2020
 
 @author: Daulet Baimukashev
 """
-
 import numpy as np
 from PIL import Image
 import cv2
@@ -17,8 +16,10 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 import matplotlib.pyplot as plt
 import math
+import random
 
 env.scratchWorkspace = r"in_memory"
+print(arcpy.ClearWorkspaceCache_management())
 env.overwriteOutput = True
 env.outputCoordinateSystem = arcpy.SpatialReference("WGS 1984 UTM Zone 18N")
 env.geographicTransformations = "Arc_1950_To_WGS_1984_5; PSAD_1956_To_WGS_1984_6"
@@ -65,42 +66,41 @@ class ViewshedRandomEnv(gym.Env):
     def __init__(self):
 
         #input Raster
-        self.city_array = np.array((Image.open(r"../data/images/total_city7_nearest.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
-        #self.city_array = np.ones((800,800))
-        #self.city_array[0:500,600:790] = 10
-        self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
+        self.city_array = np.array((Image.open(r"../data/images/total_city3_nearest_uint8.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        self.im_height, self.im_width  = self.city_array.shape
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         # input shapefile
-        self.shape_file = r"../data/input_shapefile/10/points_XYTableToPoint_second.shp"
+        self.shape_file = r"../data/input_shapefile/30/points_XYTableToPoint_second.shp"
+        # observer params
+        self.camera_number = 30
         # camera locations
-        self.a = 500*np.repeat(np.arange(10), 3)
-        self.observer_locations = self.a.reshape(10,3)   #10*np.zeros((10,3))
+        self.a = int(self.im_width/35)*np.repeat(np.arange(self.camera_number ),3)
+        self.observer_locations = self.a.reshape(self.camera_number,3)   #10*np.zeros((10,3))
+        #self.observer_locations[:,1] = 20
         # viewshed params
         self.analysis_type = "FREQUENCY"
         self.analysis_method = "PERIMETER_SIGHTLINES"
+        self.outer_radius = 375        
+        self.inner_radius = 0
+        self.radius_is_3d = 'True'
         self.observer_height = 0
         self.vertical_lower_angle  = -90
         self.vertical_upper_angle = 90
-        self.radius_is_3d = 'True'
-        self.inner_radius = 0
-        self.outer_radius = 750
         # init params
-        self.init_x = 1000 #self.im_width/2
-        self.init_y = 1000 #self.im_height/2
-        self.init_observer_dist = 500 # how far init observer from each other
+        self.init_x = 1#int(self.im_width/10)
+        self.init_y = 1#int(self.im_height/10)
+        self.init_observer_dist = 1 # how far init observer from each other
         self.init_azimuth1 = 0
         self.init_azimuth2 = 360
         # info extra about the env
         self.info = 0.0         # ratio
         self.iteration = 0
         self.state = np.zeros((self.im_height, self.im_width))
-        # observer params
-        self.camera_number = 10
         # search parameter
-        self.radius = 1
-        self.radius_delta = 1
+        self.radius = 10
+        self.radius_delta = 10 
         self.move_step = 1
-        self.min_height = 20
+        self.min_height = 30
         # rendering
         self.is_render = 'True'
         self.max_render = 100
@@ -113,7 +113,7 @@ class ViewshedRandomEnv(gym.Env):
         return [seed]
 
     def reset(self):
-        self.reset_shapefile(self.shape_file)
+        #self.reset_shapefile(self.shape_file)
         self.state = np.zeros((self.im_height, self.im_width))
         self.iteration = 0
         return self.state
@@ -129,7 +129,7 @@ class ViewshedRandomEnv(gym.Env):
             for row in cursor:
                 delta += 1
                 row[0]= self.init_x + (delta%self.camera_number)*X
-                row[1]= self.init_y + (delta//self.camera_number)*X*1.5
+                row[1]= self.init_y + (delta//self.camera_number)*X
                 row[2]= self.init_azimuth1
                 row[3]= self.init_azimuth2
                 x = row[0]
@@ -152,24 +152,34 @@ class ViewshedRandomEnv(gym.Env):
 
     def show_image(self,show_array,dt):
 
-        show_array = show_array * 20
-        show_array = Image.fromarray(show_array, 'L')
-        show_array = np.array(show_array)
-        show_array = cv2.resize(show_array, (800,800), interpolation = cv2.INTER_AREA)
+        city_rgb = np.stack((self.city_array,)*3, axis=-1)
+        city_rgb[:,:,2] = show_array*100 
+        
+        for i in range (self.camera_number):
+            center_coordinates = (self.observer_locations[i][1], self.observer_locations[i][0])
+            color = (0, 255, 0) 
+            thickness = 5
+            city_rgb = cv2.circle(city_rgb, center_coordinates, 10, color, thickness) 
+            
+        #show_array = show_array * 50
+        #show_array = Image.fromarray(show_array, 'L')
+        #show_array = np.array(show_array)
+        #show_array = cv2.resize(show_array, (800,800), interpolation = cv2.INTER_AREA)
+        
+        city_rgb = cv2.resize(city_rgb, (800,800), interpolation = cv2.INTER_AREA)
+    
         cv2.startWindowThread()
         cv2.namedWindow("preview")
-        cv2.imshow("preview", show_array)
+        cv2.imshow("preview", city_rgb)
         cv2.waitKey(dt & 0xFF)
         cv2.destroyAllWindows()
 
-
-    ###
     ### STEP
     def step(self):
 
         self.iteration = self.iteration + 1
         # move all observer to closest point
-        self.moveto_closest_point()
+        self.moveto_closest_point() 
         # update shapefile
         self.update_shapefile_random(self.shape_file, self.observer_locations)
         # create the viewshed
@@ -188,32 +198,53 @@ class ViewshedRandomEnv(gym.Env):
         min_height = self.min_height
 
         while is_done==0:
+            # FOR EACH CAMERA:
             n = n + 1
             radius = self.radius
             is_found = 0
-
+            
+            # current points
             y = self.observer_locations[n,0]
             x = self.observer_locations[n,1]
-            z = self.observer_locations[n,2]
 
             while is_found == 0:
                 yx_coor = self.get_spiral(y,x,radius,move_step)
                 h,w = yx_coor.shape
                 observer_points = []
                 for i in range(h):
-                    observer_height = self.city_array[yx_coor[i][0], yx_coor[i][1]]
+                    # FOR EACH POINT  AROUND THE CAMERA:
+                    yi = yx_coor[i][0]
+                    xi = yx_coor[i][1]
+                    observer_height = self.city_array[yi, xi] 
                     if observer_height > min_height:
-                        observer_distance = math.sqrt((y-yx_coor[i][0])**2 + (x-yx_coor[i][1])**2)
-                        observer_points.append([yx_coor[i][0], yx_coor[i][1], observer_height, observer_distance])
-
+                        # if the height of the camera is feasible, 
+                        # then find the sum of zero-value neighbours of the point
+                        yx_i = self.get_spiral(yi,xi,1,1)
+                        hi,wi = yx_i.shape
+                        sum_nb = 0 # find the sum of zero neighbours
+                        for j in range(hi):
+                            # FOR EACH NEIGHBOUR OF THE POINT:                        
+                            y_nb = yx_i[j][0]
+                            x_nb = yx_i[j][1]
+                            if self.city_array[y_nb, x_nb] < 3:
+                                sum_nb = sum_nb + 1
+                        
+                        if sum_nb > 0: 
+                            observer_distance = math.sqrt((y-yi)**2 + (x-xi)**2)
+                            observer_points.append([yi, xi, observer_height, observer_distance])
+                
                 if len(observer_points) > 0:
                     is_found = 1
-                    # sort by h and get first row
-                    observer_points = sorted(observer_points, key=lambda l:l[3], reverse=False)
-                    # or random
-                    next_y = observer_points[0][0]
-                    next_x = observer_points[0][1]
-                    next_z = observer_points[0][2]
+                    # version 1 : sort by h and get first row
+                    #observer_points = sorted(observer_points, key=lambda l:l[3], reverse=False)
+                    #r = 0
+                    
+                    # version 2 : random
+                    r = random.randrange(len(observer_points))
+                    
+                    next_y = observer_points[r][0]
+                    next_x = observer_points[r][1]
+                    next_z = observer_points[r][2]
 
                 radius = radius + self.radius_delta
 
@@ -226,7 +257,10 @@ class ViewshedRandomEnv(gym.Env):
                 is_done = 1
 
     def get_spiral(self, y, x, radius, move_step):
-        
+
+        '''
+        Return the list of [y,x,z] points around the camera 
+        '''
         yx_list = []
         temp_yi = y-radius
         temp_xi = x-radius
@@ -293,12 +327,14 @@ class ViewshedRandomEnv(gym.Env):
         outer_radius_ = self.outer_radius
         start_t = time.time()
 
+
         outViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
                                  vertical_error= 0, out_observer_region_relationship_table= "", refractivity_coefficient= 0.13,
                                  surface_offset= 0, observer_offset = 0, observer_elevation = "OFFSETA", inner_radius= inner_radius_,
-                                 outer_radius= "RADIUS2", inner_radius_is_3d = radius_is_3d_, outer_radius_is_3d = radius_is_3d_,
-                                 horizontal_start_angle = "AZIMUTH1", horizontal_end_angle= "AZIMUTH2", vertical_upper_angle = vertical_upper_angle_,
+                                 outer_radius= outer_radius_, inner_radius_is_3d = radius_is_3d_, outer_radius_is_3d = radius_is_3d_,
+                                 horizontal_start_angle = 0, horizontal_end_angle= 360, vertical_upper_angle = vertical_upper_angle_,
                                  vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
+
 
         print('elapsed for viewshed', time.time() - start_t)
         output_array = arcpy.RasterToNumPyArray(outViewshed2) # output array -> each cell how many observer can see that pixel
