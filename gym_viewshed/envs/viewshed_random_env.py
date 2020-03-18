@@ -66,8 +66,10 @@ class ViewshedRandomEnv(gym.Env):
     def __init__(self):
 
         #input Raster
-        self.city_array = np.array((Image.open(r"../data/images/total_city3_nearest_uint8.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        self.city_array = np.array((Image.open(r"../data/images/total_city3_nearest_uint8_scale.png").convert('L')), dtype=np.uint8)  #.resize((900,600))
+        self.non_zero_mask = np.array((Image.open(r"../data/images/nonZeroMask3_nearest_uint8_scale.png").convert('L')), dtype=np.uint8) 
         self.im_height, self.im_width  = self.city_array.shape
+        print(self.im_height)
         self.input_raster = arcpy.NumPyArrayToRaster(self.city_array)
         # input shapefile
         self.shape_file = r"../data/input_shapefile/30/points_XYTableToPoint_second.shp"
@@ -75,7 +77,10 @@ class ViewshedRandomEnv(gym.Env):
         self.camera_number = 30
         # camera locations
         self.a = int(self.im_width/35)*np.repeat(np.arange(self.camera_number ),3)
-        self.observer_locations = self.a.reshape(self.camera_number,3)   #10*np.zeros((10,3))
+        
+        self.aP = np.array([1809,1397,39,2573,1999,39,1684,2420,39,2255,2049,65,2132,3250,39,2594,2886,74,2559,3119,39,2247,1609,153,1942,849,39,3086,2116,39,2834,2019,39,2867,744,110,1392,832,39,758,1678,39,1333,1100,39,1878,1490,39,1957,765,39,2201,3167,86,456,862,53,2481,836,53,1673,3021,53,2612,2592,99,2210,2000,124,1952,1763,39,1324,2157,39,2853,2049,39,2697,2752,39,2504,1430,47,2936,2335,39,1836,192,39])
+        self.observer_locations = self.aP.reshape(self.camera_number,3)   #self.a.reshape(self.camera_number,3)   #10*np.zeros((10,3))    
+        self.observer_locations_init = self.aP.reshape(self.camera_number,3)+1   #self.a.reshape(self.camera_number,3)   #10*np.zeros((10,3))   
         #self.observer_locations[:,1] = 20
         # viewshed params
         self.analysis_type = "FREQUENCY"
@@ -93,12 +98,12 @@ class ViewshedRandomEnv(gym.Env):
         self.init_azimuth1 = 0
         self.init_azimuth2 = 360
         # info extra about the env
-        self.info = 0.0         # ratio
+        self.info = 0.0  # ratio
         self.iteration = 0
         self.state = np.zeros((self.im_height, self.im_width))
         # search parameter
-        self.radius = 10
-        self.radius_delta = 10 
+        self.radius = 3
+        self.radius_delta = 3 
         self.move_step = 1
         self.min_height = 30
         # rendering
@@ -158,9 +163,14 @@ class ViewshedRandomEnv(gym.Env):
         for i in range (self.camera_number):
             center_coordinates = (self.observer_locations[i][1], self.observer_locations[i][0])
             color = (0, 255, 0) 
+            thickness = 2
+            city_rgb = cv2.circle(city_rgb, center_coordinates, 30, color, thickness) 
+
+        for i in range (self.camera_number):
+            center_coordinates = (self.observer_locations_init[i][1], self.observer_locations_init[i][0])
+            color = (255, 0, 0) 
             thickness = 5
-            city_rgb = cv2.circle(city_rgb, center_coordinates, 10, color, thickness) 
-            
+            city_rgb = cv2.circle(city_rgb, center_coordinates, 10, color, thickness)             
         #show_array = show_array * 50
         #show_array = Image.fromarray(show_array, 'L')
         #show_array = np.array(show_array)
@@ -180,6 +190,9 @@ class ViewshedRandomEnv(gym.Env):
         self.iteration = self.iteration + 1
         # move all observer to closest point
         self.moveto_closest_point() 
+        #print('after move')
+        #print(self.observer_locations)
+        #print(self.observer_locations_init)
         # update shapefile
         self.update_shapefile_random(self.shape_file, self.observer_locations)
         # create the viewshed
@@ -198,23 +211,36 @@ class ViewshedRandomEnv(gym.Env):
         min_height = self.min_height
 
         while is_done==0:
+            
+            in_range = 0
+            while in_range == 0:
+            
+                # current points
+                x = random.randrange(self.im_width)
+                y = random.randrange(self.im_height)
+            
+                if self.non_zero_mask[y,x] > 0:
+                    in_range = 1
+            
             # FOR EACH CAMERA:
             n = n + 1
+            #print(n)
             radius = self.radius
             is_found = 0
-            
-            # current points
-            y = self.observer_locations[n,0]
-            x = self.observer_locations[n,1]
-
+        
+            #print('y and x ',y,x)            
+            #y = self.observer_locations[n,0]
+            #x = self.observer_locations[n,1]
             while is_found == 0:
                 yx_coor = self.get_spiral(y,x,radius,move_step)
                 h,w = yx_coor.shape
                 observer_points = []
+                #print('look')
                 for i in range(h):
                     # FOR EACH POINT  AROUND THE CAMERA:
                     yi = yx_coor[i][0]
                     xi = yx_coor[i][1]
+                    
                     observer_height = self.city_array[yi, xi] 
                     if observer_height > min_height:
                         # if the height of the camera is feasible, 
@@ -228,8 +254,9 @@ class ViewshedRandomEnv(gym.Env):
                             x_nb = yx_i[j][1]
                             if self.city_array[y_nb, x_nb] < 3:
                                 sum_nb = sum_nb + 1
+                                #print('sum nb ', sum_nb)
                         
-                        if sum_nb > 0: 
+                        if sum_nb > 3: 
                             observer_distance = math.sqrt((y-yi)**2 + (x-xi)**2)
                             observer_points.append([yi, xi, observer_height, observer_distance])
                 
@@ -238,10 +265,9 @@ class ViewshedRandomEnv(gym.Env):
                     # version 1 : sort by h and get first row
                     #observer_points = sorted(observer_points, key=lambda l:l[3], reverse=False)
                     #r = 0
-                    
                     # version 2 : random
                     r = random.randrange(len(observer_points))
-                    
+                    #print('r:', r)
                     next_y = observer_points[r][0]
                     next_x = observer_points[r][1]
                     next_z = observer_points[r][2]
@@ -249,10 +275,19 @@ class ViewshedRandomEnv(gym.Env):
                 radius = radius + self.radius_delta
 
             # next_x next_y next_z
+            #print('after y and x ',y,x) 
+                      
+            self.observer_locations_init[n,0] = y
+            self.observer_locations_init[n,1] = x
+            self.observer_locations_init[n,2] = next_z
+            #print(self.observer_locations_init[n,0],self.observer_locations_init[n,1])
+
+            #print('after nexty and nextx ',next_y,next_x)  
             self.observer_locations[n,0] = next_y
             self.observer_locations[n,1] = next_x
             self.observer_locations[n,2] = next_z
-
+            
+            #print(self.observer_locations[n,0],self.observer_locations[n,1])
             if n == self.camera_number-1:
                 is_done = 1
 
@@ -293,8 +328,11 @@ class ViewshedRandomEnv(gym.Env):
 
         # limit the xy_arr pairs [x,y]
         yx_arr = np.asarray(yx_list, dtype=np.int16)
-        yx_arr = np.clip(yx_arr, 0, self.im_height)
-
+        #print('before ', yx_arr)
+        yx_arr1 = np.clip(yx_arr[:,0], 0, self.im_height-1)
+        yx_arr2 = np.clip(yx_arr[:,1], 0, self.im_width-1)
+        yx_arr = np.stack((yx_arr1,yx_arr2), axis = 1) 
+        #print('after ', yx_arr)
         return yx_arr
 
     def update_shapefile_random(self, shape_file, observer_loc):
@@ -327,7 +365,6 @@ class ViewshedRandomEnv(gym.Env):
         outer_radius_ = self.outer_radius
         start_t = time.time()
 
-
         outViewshed2 = Viewshed2(in_raster=input_raster, in_observer_features= shape_file, out_agl_raster= "", analysis_type= analysis_type_,
                                  vertical_error= 0, out_observer_region_relationship_table= "", refractivity_coefficient= 0.13,
                                  surface_offset= 0, observer_offset = 0, observer_elevation = "OFFSETA", inner_radius= inner_radius_,
@@ -335,10 +372,12 @@ class ViewshedRandomEnv(gym.Env):
                                  horizontal_start_angle = 0, horizontal_end_angle= 360, vertical_upper_angle = vertical_upper_angle_,
                                  vertical_lower_angle= vertical_lower_angle_, analysis_method=analysis_method_)
 
-
         print('elapsed for viewshed', time.time() - start_t)
         output_array = arcpy.RasterToNumPyArray(outViewshed2) # output array -> each cell how many observer can see that pixel
         output_array[output_array == 255] = 0
+        output_array = np.multiply(output_array, self.non_zero_mask)
+        #print('shapes ', output_array.shape,self.non_zero_mask.shape )
+        #print('elapsed for numpy', time.time() - start_t)
         visible_points = output_array > 0
         visible_area = visible_points.sum()
         ratio = visible_area/output_array.size
