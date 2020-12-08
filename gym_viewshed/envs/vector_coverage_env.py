@@ -107,7 +107,7 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 1000
+        self.max_iter = 250
 
         # coverage
         self.city_coverage = np.asarray(Image.open(r"../data/images/RasterTotalCoverage4.png"))
