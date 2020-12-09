@@ -83,8 +83,8 @@ class VectorCoverageEnv(gym.Env):
         self.tilt_pos = -45
         self.zoom_pos = 20               # 0 - 20mm (min), 1 - 800 mm (max)
 
-        self.delta_pan  = 10                # deg
-        self.delta_tilt = 3                 # deg
+        self.delta_pan  = 5                # deg
+        self.delta_tilt = 2                 # deg
         self.delta_zoom =  1.25              # 1.25x times
 
         self.horizon_fov = 21               # 21           # Field of View deg
