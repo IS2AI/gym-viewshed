@@ -14,8 +14,9 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 import matplotlib.pyplot as plt
 
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+#import os
+#os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+
 import math
 
 
@@ -78,7 +79,13 @@ class VectorCoverageEnv(gym.Env):
         self.max_distance_min_zoom = 100       # at min zoom - 20mm - the max distance 50
         self.max_distance_max_zoom = 4000     # at min zoom - 800mm - the max distance 2000
 
-        # PTZ
+        self.horizon_fov_min = 0.5*2   # 0.5      # at min zoom - 20mm - the max distance 50
+        self.horizon_fov_max = 21*2    # 21       # at min zoom - 20mm - the max distance 50
+
+        self.vertical_fov_min =  0.3*2   # 0.3        # 11.8        # Field of View deg
+        self.vertical_fov_max =  11.8*2  # 11.8         # 11.8        # Field of View deg
+
+        # PTZ initalize
         self.pan_pos = 0
         self.tilt_pos = -45
         self.zoom_pos = 20               # 0 - 20mm (min), 1 - 800 mm (max)
@@ -87,8 +94,8 @@ class VectorCoverageEnv(gym.Env):
         self.delta_tilt = 2                 # deg
         self.delta_zoom =  1.25              # 1.25x times
 
-        self.horizon_fov = 21               # 21           # Field of View deg
-        self.vertical_fov =  11.8           # 11.8        # Field of View deg
+        self.horizon_fov = self.horizon_fov_max               # 21           # Field of View deg
+        self.vertical_fov =  self.vertical_fov_max            # 11.8        # Field of View deg
         self.zoom_distance = self.max_distance_min_zoom
 
         # GYM env params
@@ -107,7 +114,7 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 250
+        self.max_iter = 280
 
         # coverage
         self.city_coverage = np.asarray(Image.open(r"../data/images/RasterTotalCoverage4.png"))
@@ -319,11 +326,11 @@ class VectorCoverageEnv(gym.Env):
             if self.zoom_pos > 800:
                 self.zoom_pos = 800
 
-            if self.horizon_fov < 0.5:
-                self.horizon_fov = 0.5
+            if self.horizon_fov < self.horizon_fov_min:
+                self.horizon_fov = self.horizon_fov_min
 
-            if self.vertical_fov < 0.3:
-                self.vertical_fov = 0.3
+            if self.vertical_fov < self.vertical_fov_min:
+                self.vertical_fov = self.vertical_fov_min
 
             if self.zoom_distance > self.max_distance_max_zoom:
                 self.zoom_distance = self.max_distance_max_zoom
@@ -342,11 +349,11 @@ class VectorCoverageEnv(gym.Env):
             if self.zoom_pos < 20:
                 self.zoom_pos = 20
 
-            if self.horizon_fov > 21:
-                self.horizon_fov = 21
+            if self.horizon_fov > self.horizon_fov_max:
+                self.horizon_fov = self.horizon_fov_max
 
-            if self.vertical_fov > 11.8:
-                self.vertical_fov = 11.8
+            if self.vertical_fov > self.vertical_fov_max:
+                self.vertical_fov = self.vertical_fov_max
 
             if self.zoom_distance < self.max_distance_min_zoom:
                 self.zoom_distance = self.max_distance_min_zoom
