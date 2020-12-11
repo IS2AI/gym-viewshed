@@ -145,12 +145,13 @@ class VectorCoverageEnv(gym.Env):
         crossed_points = (crossed_map > 0).astype(int)
         crossed_area = crossed_points.sum()
 
-        reward = crossed_area
-        self.reward_temp = reward
-        # if crossed_area > 0:
-        #     reward = 1
-        # else:
-        #     reward = 0
+        if crossed_area > 20:
+            reward = 1
+        else:
+            reward = 0
+
+        if num_visible_points == 0:
+            reward = -1
 
         #done ?
         if self.iteration > self.max_iter:
