@@ -55,35 +55,43 @@ class VectorCoverageEnv(gym.Env):
 
     def __init__(self):
 
-        # import image of city
-        self.city_array = np.array((Image.open(r"../data/images/RasterAstanaCropped.png")), dtype=np.uint16)
+        # import image of city and convert values to height
+        # Original image
+        #self.city_array = np.array((Image.open(r"../data/images/RasterAstanaCropped.png")), dtype=np.uint16)
+        # crop the image with center at camera location
+        # self.camera_location = (3073, 11684, 350)   # x,y,z coordinate  #  (11685, 7074, 350) - RasterAstana.png
+        # self.coverage_radius = 2000                 # .. km square from the center
+        # self.city_array = self.city_array[self.camera_location[1]-self.coverage_radius:self.camera_location[1]+self.coverage_radius,
+        #                                 self.camera_location[0]-self.coverage_radius:self.camera_location[0]+self.coverage_radius]
+
+        # Resize 1000 > 250
+        self.city_array = np.array((Image.open(r"../data/images/RasterAstanaCropped250x250.png")), dtype=np.uint16)
         self.city_array = self.city_array/100 - 285             # convert to meter
-        print('Original Image: ', type(self.city_array), self.city_array.shape)
 
-        # crop the image with center at camera
-        self.camera_location = (3073, 11684, 350)   # x,y,z coordinate  #  (11685, 7074, 350) - RasterAstana.png
-        self.coverage_radius = 2000                 # .. km square from the center
-        self.city_array = self.city_array[self.camera_location[1]-self.coverage_radius:self.camera_location[1]+self.coverage_radius,
-                                        self.camera_location[0]-self.coverage_radius:self.camera_location[0]+self.coverage_radius]
+        # crop the image with center at camera location
+        self.camera_location = (126, 126, 350)   # x,y,z coordinate  #  (11685, 7074, 350) - RasterAstana.png
+        self.coverage_radius = 125                 # .. km square from the center or in pixels
 
+        # Get image params
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
-        print('Cropped Image: ', type(self.city_array), self.city_array.shape)
-        print('Range Image: ', np.min(self.city_array), np.max(self.city_array))
+        print('Image size: ', type(self.city_array), self.city_array.shape)
+        print('Image range: ', np.min(self.city_array), np.max(self.city_array))
 
         # CAMERA params
         self.camera_number = 1
-        self.camera_location_cropped = (int(self.coverage_radius), int(self.coverage_radius), self.camera_location[2]-285)
-        print('Camera Loc: ', self.camera_location_cropped)
+        self.camera_location_cropped = (int(self.coverage_radius), int(self.coverage_radius), (self.camera_location[2]-313)/4) # 313 or 285s
+        print('Camera Location: ', self.camera_location_cropped)
 
-        self.observer_height = self.camera_location_cropped[2] + 5
-        self.max_distance_min_zoom = 100       # at min zoom - 20mm - the max distance 50
-        self.max_distance_max_zoom = 4000     # at min zoom - 800mm - the max distance 2000
+        self.observer_height = self.camera_location_cropped[2] + 2
+        self.max_distance_min_zoom = 100/4       # at min zoom - 20mm - the max distance 50
+        self.max_distance_max_zoom = 4000/4     # at min zoom - 800mm - the max distance 2000
 
-        self.horizon_fov_min = 0.5*2   # 0.5      # at min zoom - 20mm - the max distance 50
-        self.horizon_fov_max = 21*2    # 21       # at min zoom - 20mm - the max distance 50
+        self.scale = 2
+        self.horizon_fov_min = 0.5*self.scale       # 0.5      # at min zoom - 20mm - the max distance 50
+        self.horizon_fov_max = 21*self.scale     # 21       # at min zoom - 20mm - the max distance 50
 
-        self.vertical_fov_min =  0.3*2   # 0.3        # 11.8        # Field of View deg
-        self.vertical_fov_max =  11.8*2  # 11.8         # 11.8        # Field of View deg
+        self.vertical_fov_min =  0.3*self.scale    # 0.3        # 11.8        # Field of View deg
+        self.vertical_fov_max =  11.8*self.scale   # 11.8         # 11.8        # Field of View deg
 
         # PTZ initalize
         self.pan_pos = 0
@@ -114,11 +122,12 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 280
+        self.max_iter = 500
         self.reward_temp = 0
 
         # coverage
-        self.city_coverage = np.asarray(Image.open(r"../data/images/RasterTotalCoverage4.png"))
+        # self.city_coverage = np.asarray(Image.open(r"../data/images/RasterTotalCoverage.png"))
+        self.city_coverage = np.asarray(Image.open(r"../data/images/RasterAstanaCropped250x250Coverage.png"))
         self.rad_matrix, self.angle_matrix = self.create_cartesian()
 
         # inputs
@@ -142,15 +151,11 @@ class VectorCoverageEnv(gym.Env):
 
         #reward ?
         crossed_map = np.multiply(self.state_total_coverage,self.state_visible_points)
-        crossed_points = (crossed_map > 0).astype(int)
-        crossed_area = crossed_points.sum()
+        crossed_points = (crossed_map > 0).astype(int).sum()
 
-        if crossed_area > 20:
+        if crossed_points > 0:
             reward = 1
         else:
-            reward = 0
-
-        if num_visible_points == 0:
             reward = -1
 
         #done ?
@@ -215,11 +220,11 @@ class VectorCoverageEnv(gym.Env):
 
         show_array[:,:,2] = self.state_visible_points*255
         #show_array[:,:,2] = np.multiply(self.state_visible_points, 255-np.array(self.city_coverage, dtype='uint8'))
-        show_array = cv2.resize(show_array, (1000,1000), interpolation = cv2.INTER_AREA)
+        #show_array = cv2.resize(show_array, (1000,1000), interpolation = cv2.INTER_AREA)
 
         # show the  covered points
         show_array2 = np.array(self.state_total_coverage, dtype='uint8')
-        show_array2 = cv2.resize(show_array2, (1000,1000), interpolation = cv2.INTER_AREA)
+        #show_array2 = cv2.resize(show_array2, (1000,1000), interpolation = cv2.INTER_AREA)
 
         font                   = cv2.FONT_HERSHEY_SIMPLEX
         bottomLeftCornerOfText = (10,700)
@@ -251,36 +256,17 @@ class VectorCoverageEnv(gym.Env):
 
             cv2.putText(show_array,'Current field of view of the camera', (10,100), font, fontScale, (255,255,255), lineType)
             cv2.putText(show_array2,'Covered Points by the camera (union)', (10,100), font, fontScale, (255,255,255), lineType)
+            cv2.putText(show_array,action_display, bottomLeftCornerOfText, font, fontScale, fontColor, lineType)
+            cv2.putText(show_array,text_display, bottomLeftCornerOfText2, font, fontScale, fontColor, lineType)
+            cv2.putText(show_array,text_display2, bottomLeftCornerOfText3, font, fontScale, fontColor, lineType)
 
-            cv2.putText(show_array,action_display,
-                bottomLeftCornerOfText,
-                font,
-                fontScale,
-                fontColor,
-                lineType)
-
-            cv2.putText(show_array,text_display,
-                bottomLeftCornerOfText2,
-                font,
-                fontScale,
-                fontColor,
-                lineType)
-
-            cv2.putText(show_array,text_display2,
-                bottomLeftCornerOfText3,
-                font,
-                fontScale,
-                fontColor,
-                lineType)
             cv2.namedWindow("city")
             cv2.imshow("city", show_array)
 
             cv2.namedWindow("coverage")
             cv2.imshow("coverage", show_array2)
 
-
             cv2.waitKey(5)
-
         except KeyboardInterrupt:
             cv2.destroyAllWindows()
 
