@@ -144,10 +144,13 @@ class VectorCoverageEnv(gym.Env):
         crossed_points = (crossed_map > 0).astype(int)
         crossed_area = crossed_points.sum()
 
-        if crossed_area > 0:
+        if crossed_area > 20:
             reward = 1
         else:
             reward = 0
+
+        if num_visible_points == 0:
+            reward = -1
 
         #done ?
         if self.iteration > self.max_iter:
@@ -186,8 +189,20 @@ class VectorCoverageEnv(gym.Env):
     def reset(self):
         print('Env reset ...')
         self.iteration = 0
+        
+        # position
+        self.pan_pos = 0
+        self.tilt_pos = -45
+        self.zoom_pos = 20
+
+        self.horizon_fov = self.horizon_fov_max
+        self.vertical_fov =  self.vertical_fov_max
+        self.zoom_distance = self.max_distance_min_zoom
+
+        # state
         self.state_visible_points = np.zeros((self.im_height, self.im_width))
-        next_state = np.stack((self.city_coverage, self.state_visible_points), axis = 0)
+        self.state_total_coverage = self.city_coverage
+        next_state = np.stack((self.state_total_coverage/255.0, self.state_visible_points), axis = 0)
 
         return next_state
 
