@@ -122,7 +122,7 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 500
+        self.max_iter = 1000
         self.reward_temp = 0
 
         # coverage
@@ -153,13 +153,22 @@ class VectorCoverageEnv(gym.Env):
         crossed_map = np.multiply(self.state_total_coverage,self.state_visible_points)
         crossed_points = (crossed_map > 0).astype(int).sum()
 
+
         if crossed_points > 0:
             reward = 1
         else:
             reward = -1
 
+        #
+        #if num_visible_points < 50:
+        #    reward = -1
+
+
+        # total covered
+        total_cover = ((self.state_total_coverage>0).astype(int).sum())/(251*251)
+
         #done ?
-        if self.iteration > self.max_iter:
+        if (self.iteration > self.max_iter) or (total_cover <0.15):
             done = 1
         else:
             done = 0
@@ -186,7 +195,7 @@ class VectorCoverageEnv(gym.Env):
 
         self.iteration = self.iteration + 1
 
-        return next_state, reward, done
+        return next_state, reward, done, self.info
 
     def seed(self, seed = None):
         self.np_random , seed = seeding.np_random()
