@@ -122,7 +122,7 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 1000
+        self.max_iter = 500
         self.reward_temp = 0
 
         # coverage
@@ -154,7 +154,7 @@ class VectorCoverageEnv(gym.Env):
         crossed_points = (crossed_map > 0).astype(int).sum()
 
 
-        if crossed_points > 0:
+        if crossed_points > 10:
             reward = 1
         else:
             reward = -1
