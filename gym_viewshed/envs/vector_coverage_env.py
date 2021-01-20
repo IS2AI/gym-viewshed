@@ -153,22 +153,23 @@ class VectorCoverageEnv(gym.Env):
         crossed_map = np.multiply(self.state_total_coverage,self.state_visible_points)
         crossed_points = (crossed_map > 0).astype(int).sum()
 
-
-        if crossed_points > 10:
+        if crossed_points > 20:
             reward = 1
         else:
-            reward = -1
+            reward = -5
 
-        #
         #if num_visible_points < 50:
         #    reward = -1
-
 
         # total covered
         total_cover = ((self.state_total_coverage>0).astype(int).sum())/(251*251)
 
         #done ?
-        if (self.iteration > self.max_iter) or (total_cover <0.15):
+        if total_cover < 0.35:
+            done = 1
+            reward = 500
+        
+        if (self.iteration > self.max_iter) :
             done = 1
         else:
             done = 0
