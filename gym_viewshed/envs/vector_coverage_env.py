@@ -122,12 +122,12 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 500
+        self.max_iter = 300
         self.reward_temp = 0
 
         # coverage
         # self.city_coverage = np.asarray(Image.open(r"../data/images/RasterTotalCoverage.png"))
-        self.city_coverage = np.asarray(Image.open(r"../data/images/RasterAstanaCropped250x250Coverage.png"))
+        self.city_coverage = np.asarray(Image.open(r"../data/images/RasterAstanaCropped250x250CoverageBinary.png"))
         self.rad_matrix, self.angle_matrix = self.create_cartesian()
 
         # inputs
@@ -149,35 +149,40 @@ class VectorCoverageEnv(gym.Env):
         # for rendering
         self.state_visible_points = output_array
 
-        #reward ?
+        # >>>> reward ?
         crossed_map = np.multiply(self.state_total_coverage,self.state_visible_points)
         crossed_points = (crossed_map > 0).astype(int).sum()
 
-        if crossed_points > 20:
-            reward = 1
-        else:
-            reward = -5
+        #if crossed_points > 20:
+        #    reward = 1
+        #else:
+        #    reward = -5
 
         #if num_visible_points < 50:
         #    reward = -1
 
+        # reward = (10*crossed_points + num_visible_points - 100)/1000
+        reward = (crossed_points - 30)/100
+
+        # >>>> next_state ?
+        # 1- self.state_total_coverage - already covered points
+        self.state_total_coverage = np.multiply(self.state_total_coverage,(1-self.state_visible_points))
+
         # total covered
         total_cover = ((self.state_total_coverage>0).astype(int).sum())/(251*251)
 
-        #done ?
-        if total_cover < 0.35:
-            done = 1
-            reward = 500
-        
+
+
         if (self.iteration > self.max_iter) :
             done = 1
         else:
             done = 0
 
-        # next_state ?
-
-        # 1- self.state_total_coverage - already covered points
-        self.state_total_coverage = np.multiply(self.state_total_coverage,(1-self.state_visible_points))
+        # >>>> done ?
+        if total_cover < 0.1:
+            print('-------------------------done---------------------------------')
+            #done = 1
+            #reward = 500
 
         # 2 - separate
         # self.state_gray_coverage = np.add(self.state_gray_coverage, self.state_visible_points)
@@ -240,7 +245,7 @@ class VectorCoverageEnv(gym.Env):
         bottomLeftCornerOfText = (10,700)
         bottomLeftCornerOfText2 = (10,750)
         bottomLeftCornerOfText3 = (10,800)
-        fontScale              = 0.8
+        fontScale              = 0.5
         fontColor              = (0,0,255)
         lineType               = 1
 
@@ -264,8 +269,8 @@ class VectorCoverageEnv(gym.Env):
             text_display2 = 'Max distance: {:.2f}, Horizontal FOV: {:.2f}, Vertical FOV: {:.2f}'.format(
                             self.zoom_distance, self.horizon_fov, self.vertical_fov)
 
-            cv2.putText(show_array,'Current field of view of the camera', (10,100), font, fontScale, (255,255,255), lineType)
-            cv2.putText(show_array2,'Covered Points by the camera (union)', (10,100), font, fontScale, (255,255,255), lineType)
+            cv2.putText(show_array,'Current field of view of the camera', (10,220), font, fontScale, (255,255,255), lineType)
+            cv2.putText(show_array2,'Covered Points by the camera (union)', (10,220), font, fontScale, (255,255,255), lineType)
             cv2.putText(show_array,action_display, bottomLeftCornerOfText, font, fontScale, fontColor, lineType)
             cv2.putText(show_array,text_display, bottomLeftCornerOfText2, font, fontScale, fontColor, lineType)
             cv2.putText(show_array,text_display2, bottomLeftCornerOfText3, font, fontScale, fontColor, lineType)
