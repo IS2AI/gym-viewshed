@@ -120,7 +120,7 @@ class VectorCoverageEnv(gym.Env):
         self.ratio_threshhold = 0.02
         self.reward_good_step = 1
         self.reward_bad_step = -0.05
-        self.max_iter = 300
+        self.max_iter = 500
         self.reward_temp = 0
         self.reward_prev = 0.0
 
@@ -148,6 +148,7 @@ class VectorCoverageEnv(gym.Env):
         # for rendering
         self.state_visible_points = output_array
 
+
         ##########################
         # reward ???
         ##########################
@@ -160,6 +161,8 @@ class VectorCoverageEnv(gym.Env):
         
         # option 2
         reward_curr = crossed_points / 100
+        reward_coverage = reward_curr
+
         # ------------------------------------------------
         #if num_visible_points < 50:
         #    coef_visible_points = 0.03
@@ -266,7 +269,7 @@ class VectorCoverageEnv(gym.Env):
         bottomLeftCornerOfText = (10,700)
         bottomLeftCornerOfText2 = (10,750)
         bottomLeftCornerOfText3 = (10,800)
-        fontScale              = 0.5
+        fontScale              = 0.8
         fontColor              = (0,0,255)
         lineType               = 1
 
@@ -290,8 +293,8 @@ class VectorCoverageEnv(gym.Env):
             text_display2 = 'Max distance: {:.2f}, Horizontal FOV: {:.2f}, Vertical FOV: {:.2f}'.format(
                             self.zoom_distance, self.horizon_fov, self.vertical_fov)
 
-            cv2.putText(show_array,'Current field of view of the camera', (10,220), font, fontScale, (255,255,255), lineType)
-            cv2.putText(show_array2,'Covered Points by the camera (union)', (10,220), font, fontScale, (255,255,255), lineType)
+            cv2.putText(show_array,'Current field of view of the camera', (10,100), font, fontScale, (255,255,255), lineType)
+            cv2.putText(show_array2,'Covered Points by the camera (union)', (10,100), font, fontScale, (255,255,255), lineType)
             cv2.putText(show_array,action_display, bottomLeftCornerOfText, font, fontScale, fontColor, lineType)
             cv2.putText(show_array,text_display, bottomLeftCornerOfText2, font, fontScale, fontColor, lineType)
             cv2.putText(show_array,text_display2, bottomLeftCornerOfText3, font, fontScale, fontColor, lineType)

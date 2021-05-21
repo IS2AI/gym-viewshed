@@ -148,6 +148,8 @@ class VectorCoverageEnv(gym.Env):
         # for rendering
         self.state_visible_points = output_array
 
+<<<<<<< HEAD
+
         ##########################
         # reward ???
         ##########################
@@ -160,6 +162,18 @@ class VectorCoverageEnv(gym.Env):
         
         # option 2
         reward_curr = crossed_points / 100
+        reward_coverage = reward_curr
+=======
+        # >>>> reward ?
+        crossed_map = np.multiply(self.state_total_coverage,self.state_visible_points)
+        crossed_points = (crossed_map > 0).astype(int).sum()
+
+        #if crossed_points > 20:
+        #    reward = 1
+        #else:
+        #    reward = -5
+>>>>>>> a0afc6f97c894da64de6f9b29ba8fb55685d16cf
+
         # ------------------------------------------------
         #if num_visible_points < 50:
         #    coef_visible_points = 0.03
@@ -173,6 +187,7 @@ class VectorCoverageEnv(gym.Env):
         gausian_scale = signal.gaussian(501, std=50)
         coef_visible_points = gausian_scale[gausian_point]
 
+<<<<<<< HEAD
         step_cost = 0.2
         reward = (1-coef_visible_points)/5 + coef_visible_points * reward_coverage - step_cost
         # print(num_visible_points, coef_visible_points)
@@ -193,12 +208,28 @@ class VectorCoverageEnv(gym.Env):
 
         #reward = -0.01
         if (self.iteration > self.max_iter):
+=======
+        # reward = (10*crossed_points + num_visible_points - 100)/1000
+        reward = (crossed_points - 30)/100
+
+        # >>>> next_state ?
+        # 1- self.state_total_coverage - already covered points
+        self.state_total_coverage = np.multiply(self.state_total_coverage,(1-self.state_visible_points))
+
+        # total covered
+        total_cover = ((self.state_total_coverage>0).astype(int).sum())/(251*251)
+
+
+
+        if (self.iteration > self.max_iter) :
+>>>>>>> a0afc6f97c894da64de6f9b29ba8fb55685d16cf
             done = 1
             reward = -5
             self.info = 1.0
         else:
             done = 0
 
+<<<<<<< HEAD
         if total_cover_ratio < 0.05:
             done = 1
             reward = 5
@@ -206,6 +237,13 @@ class VectorCoverageEnv(gym.Env):
         
         
         # next_state ???
+=======
+        # >>>> done ?
+        if total_cover < 0.1:
+            print('-------------------------done---------------------------------')
+            #done = 1
+            #reward = 500
+>>>>>>> a0afc6f97c894da64de6f9b29ba8fb55685d16cf
 
         # 2 - separate
         # self.state_gray_coverage = np.add(self.state_gray_coverage, self.state_visible_points)
