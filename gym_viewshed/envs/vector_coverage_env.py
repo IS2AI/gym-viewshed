@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 #os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import math
-
+from scipy import signal
 
 class VectorCoverageEnv(gym.Env):
     """
@@ -74,13 +74,10 @@ class VectorCoverageEnv(gym.Env):
 
         # Get image params
         self.im_height, self.im_width  = self.city_array.shape # reshape (width, height) [300,500] --> example: height = 500, width = 300
-        print('Image size: ', type(self.city_array), self.city_array.shape)
-        print('Image range: ', np.min(self.city_array), np.max(self.city_array))
 
         # CAMERA params
         self.camera_number = 1
         self.camera_location_cropped = (int(self.coverage_radius), int(self.coverage_radius), (self.camera_location[2]-313)/4) # 313 or 285s
-        print('Camera Location: ', self.camera_location_cropped)
 
         self.observer_height = self.camera_location_cropped[2] + 2
         self.max_distance_min_zoom = 100/4       # at min zoom - 20mm - the max distance 50
@@ -94,13 +91,15 @@ class VectorCoverageEnv(gym.Env):
         self.vertical_fov_max =  11.8*self.scale   # 11.8         # 11.8        # Field of View deg
 
         # PTZ initalize
-        self.pan_pos = 0
-        self.tilt_pos = -45
-        self.zoom_pos = 20               # 0 - 20mm (min), 1 - 800 mm (max)
+        self.pan_pos = 0 #360*np.random.rand()    # 0     np.random.rand()
+        self.tilt_pos = -45 #-25*np.random.rand() # -45 
+        self.zoom_pos = 20 # 20           # 0 - 20mm (min), 1 - 800 mm (max)
+
+        print('ptz init: ', self.pan_pos, self.tilt_pos, self.zoom_pos)
 
         self.delta_pan  = 5                # deg
         self.delta_tilt = 2                 # deg
-        self.delta_zoom =  1.25              # 1.25x times
+        self.delta_zoom = 1.25              # 1.25x times
 
         self.horizon_fov = self.horizon_fov_max               # 21           # Field of View deg
         self.vertical_fov =  self.vertical_fov_max            # 11.8        # Field of View deg
@@ -116,7 +115,6 @@ class VectorCoverageEnv(gym.Env):
         self.is_render = 'True'
         self.iteration = 0
         self.info = 0
-        self.seed(0)
 
         # reward
         self.ratio_threshhold = 0.02
@@ -124,10 +122,11 @@ class VectorCoverageEnv(gym.Env):
         self.reward_bad_step = -0.05
         self.max_iter = 500
         self.reward_temp = 0
+        self.reward_prev = 0.0
 
         # coverage
         # self.city_coverage = np.asarray(Image.open(r"../data/images/RasterTotalCoverage.png"))
-        self.city_coverage = np.asarray(Image.open(r"../data/images/RasterAstanaCropped250x250Coverage.png"))
+        self.city_coverage = np.asarray(Image.open(r"../data/images/RasterAstanaCropped250x250CoverageBinary.png"))
         self.rad_matrix, self.angle_matrix = self.create_cartesian()
 
         # inputs
@@ -149,35 +148,67 @@ class VectorCoverageEnv(gym.Env):
         # for rendering
         self.state_visible_points = output_array
 
-        #reward ?
+
+        ##########################
+        # reward ???
+        ##########################
+
         crossed_map = np.multiply(self.state_total_coverage,self.state_visible_points)
         crossed_points = (crossed_map > 0).astype(int).sum()
 
-        if crossed_points > 20:
-            reward = 1
-        else:
-            reward = -5
-
-        #if num_visible_points < 50:
-        #    reward = -1
-
-        # total covered
-        total_cover = ((self.state_total_coverage>0).astype(int).sum())/(251*251)
-
-        #done ?
-        if total_cover < 0.35:
-            done = 1
-            reward = 500
+        # option 1
+        reward = (crossed_points - 20) / 100
         
-        if (self.iteration > self.max_iter) :
+        # option 2
+        reward_curr = crossed_points / 100
+        reward_coverage = reward_curr
+
+        # ------------------------------------------------
+        #if num_visible_points < 50:
+        #    coef_visible_points = 0.03
+        #elif num_visible_points > 200:
+        #    coef_visible_points = 0.03
+        #else:
+        #    coef_visible_points = 1.0
+        
+        gausian_point = min(num_visible_points, 500)
+        #print(gausian_point)
+        gausian_scale = signal.gaussian(501, std=50)
+        coef_visible_points = gausian_scale[gausian_point]
+
+        step_cost = 0.2
+        reward = (1-coef_visible_points)/5 + coef_visible_points * reward_coverage - step_cost
+        # print(num_visible_points, coef_visible_points)
+
+        self.reward_prev = reward_curr
+
+        # Total Covered
+        # 1 - self.state_total_coverage - already covered points
+        self.state_total_coverage = np.multiply(self.state_total_coverage,(1-self.state_visible_points))
+        total_cover_ratio = ((self.state_total_coverage>0).astype(int).sum())/(251*251)
+
+        # done ???
+        #if (self.iteration > self.max_iter) or total_cover_ratio < 0.05:
+        #    done = 1
+        #    self.info = 1.0
+        #else:
+        #    done = 0
+
+        #reward = -0.01
+        if (self.iteration > self.max_iter):
             done = 1
+            reward = -5
+            self.info = 1.0
         else:
             done = 0
 
-        # next_state ?
-
-        # 1- self.state_total_coverage - already covered points
-        self.state_total_coverage = np.multiply(self.state_total_coverage,(1-self.state_visible_points))
+        if total_cover_ratio < 0.05:
+            done = 1
+            reward = 5
+            self.info = 1.0
+        
+        
+        # next_state ???
 
         # 2 - separate
         # self.state_gray_coverage = np.add(self.state_gray_coverage, self.state_visible_points)
@@ -193,27 +224,25 @@ class VectorCoverageEnv(gym.Env):
         #                         np.sum(np.sum(self.state_visible_points))/self.state_total_coverage.size)
 
         next_state = np.stack((self.state_total_coverage/255.0, self.state_visible_points), axis = 0)
-
         self.iteration = self.iteration + 1
 
         return next_state, reward, done, self.info
 
     def seed(self, seed = None):
-        self.np_random , seed = seeding.np_random()
+        self.np_random , seed = seeding.np_random(seed)
         return [seed]
 
     def reset(self):
-        print('Env reset ...')
         self.iteration = 0
 
         # position
-        self.pan_pos = 0
-        self.tilt_pos = -45
-        self.zoom_pos = 20
+        self.pan_pos = 360*self.np_random.rand()    #360*np.random.rand()    # 0     np.random.rand()
+        self.tilt_pos = -45*self.np_random.rand()        # -45*np.random.rand() # -45 
+        self.zoom_pos = 120     # 0 - 20mm (min), 1 - 800 mm (max)
 
-        self.horizon_fov = self.horizon_fov_max
-        self.vertical_fov =  self.vertical_fov_max
-        self.zoom_distance = self.max_distance_min_zoom
+        self.horizon_fov = self.horizon_fov_max/(self.delta_zoom**8)
+        self.vertical_fov =  self.vertical_fov_max/(self.delta_zoom**8)
+        self.zoom_distance = self.max_distance_min_zoom*(self.delta_zoom**8)
 
         # state
         self.state_visible_points = np.zeros((self.im_height, self.im_width))
@@ -314,8 +343,8 @@ class VectorCoverageEnv(gym.Env):
             #print('... tilt up')
             # update camera/ptz setting
             self.tilt_pos += self.delta_tilt
-            if self.tilt_pos > 20:
-                self.tilt_pos = 20
+            if self.tilt_pos > 0:
+                self.tilt_pos = 0
 
         elif action_type == 3:    # tilt - deg
             #print('... tilt down')
